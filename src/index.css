@@ -1,263 +1,248 @@
 * {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background-image: url("/images/image002.png");  min-height: 100vh;
-  color: #333;
-}
-
-.container {
-    max-width: none;   /* or 100% */
-    width: 100%;
-    margin: 0 auto;         /* remove centering gap */
-    padding: 1rem;     /* smaller side padding; tweak to taste */
-}
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
   
-.main { max-width: 1400px; margin: 0 auto; width: 100%; }
-
-.card {
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-  padding: 2rem;
-  margin-bottom: 2rem;
-}
-
-.card h2 {
-  color: #2d3748;
-  margin-bottom: 1rem;
-  font-size: 1.5rem;
-  font-weight: 600;
-}
-
-.form-group {
-  margin-bottom: 1.5rem;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 0.5rem;
-  font-weight: 500;
-  color: #4a5568;
-}
-
-.form-group input,
-.form-group textarea {
-  width: 100%;
-  padding: 0.75rem;
-  border: 2px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 1rem;
-  transition: border-color 0.2s;
-}
-
-.form-group input:focus,
-.form-group textarea:focus {
-  outline: none;
-  border-color: #667eea;
-}
-
-.btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: transform 0.2s, box-shadow 0.2s;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
-}
-
-.btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.btn-secondary {
-  background: #718096;
-}
-
-.btn-success {
-  background: #48bb78;
-}
-
-.file-upload {
-  border: 2px dashed #cbd5e0;
-  border-radius: 8px;
-  padding: 2rem;
-  text-align: center;
-  cursor: pointer;
-  transition: border-color 0.2s, background-color 0.2s;
-}
-
-.file-upload:hover {
-  border-color: #667eea;
-  background-color: #f7fafc;
-}
-
-.file-upload.dragover {
-  border-color: #667eea;
-  background-color: #edf2f7;
-}
-
-.loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  color: #667eea;
-  font-weight: 500;
-}
-
-.spinner {
-  width: 20px;
-  height: 20px;
-  border: 2px solid #e2e8f0;
-  border-top: 2px solid #667eea;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.results {
-  background: #f7fafc;
-  border-radius: 8px;
-  padding: 1rem;
-  margin-top: 1rem;
-}
-
-.theme-item {
-  background: white;
-  border-radius: 8px;
-  padding: 1rem;
-  margin-bottom: 1rem;
-  border-left: 4px solid #667eea;
-}
-
-.theme-item h3 {
-  color: #2d3748;
-  margin-bottom: 0.5rem;
-}
-
-.theme-item p {
-  color: #4a5568;
-  margin-bottom: 0.5rem;
-}
-
-.keywords {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
-}
-
-.keyword {
-  background: #edf2f7;
-  color: #4a5568;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.875rem;
-}
-
-.participants {
-  color: #718096;
-  font-size: 0.875rem;
-  margin-top: 0.5rem;
-}
-
-.error {
-  background: #fed7d7;
-  color: #c53030;
-  padding: 1rem;
-  border-radius: 8px;
-  margin-bottom: 1rem;
-  border-left: 4px solid #c53030;
-}
-
-.success {
-  background: #c6f6d5;
-  color: #2f855a;
-  padding: 1rem;
-  border-radius: 8px;
-  margin-bottom: 1rem;
-  border-left: 4px solid #2f855a;
-}
-
-.header {
-  text-align: center;
-  color: white;
-  margin-bottom: 2rem;
-}
-
-.header h1 {
-  font-size: 2.5rem;
-  font-weight: 700;
-  margin-bottom: 0.5rem;
-}
-
-.header p {
-  font-size: 1.1rem;
-  opacity: 0.9;
-}
-
-.actions {
-  display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-@media (max-width: 768px) {
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-image: url("/images/image002.png");
+    min-height: 100vh;
+    color: #333;
+  }
+  
   .container {
-    padding: 1rem;
+    max-width: none;           /* full-bleed container */
+    width: 100%;
+    margin: 0 auto;
+    padding: 1rem;             /* side padding */
   }
   
   .card {
-    padding: 1.5rem;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    padding: 2rem;
+    margin-bottom: 2rem;
+  }
+  
+  .card h2 {
+    color: #2d3748;
+    margin-bottom: 1rem;
+    font-size: 1.5rem;
+    font-weight: 600;
+  }
+  
+  .form-group {
+    margin-bottom: 1.5rem;
+  }
+  
+  .form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #4a5568;
+  }
+  
+  .form-group input,
+  .form-group textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: border-color 0.2s;
+  }
+  
+  .form-group input:focus,
+  .form-group textarea:focus {
+    outline: none;
+    border-color: #667eea;
+  }
+  
+  .btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  
+  .btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+  }
+  
+  .btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+  
+  .btn-secondary {
+    background: #718096;
+  }
+  
+  .btn-success {
+    background: #48bb78;
+  }
+  
+  .file-upload {
+    border: 2px dashed #cbd5e0;
+    border-radius: 8px;
+    padding: 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background-color 0.2s;
+  }
+  
+  .file-upload:hover {
+    border-color: #667eea;
+    background-color: #f7fafc;
+  }
+  
+  .file-upload.dragover {
+    border-color: #667eea;
+    background-color: #edf2f7;
+  }
+  
+  .loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    color: #667eea;
+    font-weight: 500;
+  }
+  
+  .spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid #e2e8f0;
+    border-top: 2px solid #667eea;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  
+  .results {
+    background: #f7fafc;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-top: 1rem;
+  }
+  
+  .theme-item {
+    background: white;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border-left: 4px solid #667eea;
+  }
+  
+  .theme-item h3 {
+    color: #2d3748;
+    margin-bottom: 0.5rem;
+  }
+  
+  .theme-item p {
+    color: #4a5568;
+    margin-bottom: 0.5rem;
+  }
+  
+  .keywords {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+  
+  .keyword {
+    background: #edf2f7;
+    color: #4a5568;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.875rem;
+  }
+  
+  .participants {
+    color: #718096;
+    font-size: 0.875rem;
+    margin-top: 0.5rem;
+  }
+  
+  .error {
+    background: #fed7d7;
+    color: #c53030;
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    border-left: 4px solid #c53030;
+  }
+  
+  .success {
+    background: #c6f6d5;
+    color: #2f855a;
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    border-left: 4px solid #2f855a;
+  }
+  
+  .header {
+    text-align: center;
+    color: white;
+    margin-bottom: 2rem;
   }
   
   .header h1 {
-    font-size: 2rem;
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+  }
+  
+  .header p {
+    font-size: 1.1rem;
+    opacity: 0.9;
   }
   
   .actions {
-    flex-direction: column;
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
   }
-}
-
-/* === Two-column layout === */
-.layout {
+  
+  /* === Two-column layout === */
+  .layout {
     display: grid;
     grid-template-columns: 320px 1fr; /* left sidebar width, right grows */
     gap: 16px;
     align-items: start;
+  
+    /* Center the entire two-column grid for equal left/right margins */
+    max-width: calc(320px + 1400px + 16px); /* sidebar (320) + main (1400) + gap (16) */
+    margin: 0 auto;
   }
   
   /* Left column stays visible while scrolling the right side */
   .sidebar {
     position: sticky;
-    top: 16px;           /* adjust if your header is taller */
+    top: 16px;      /* adjust if your header is taller */
     display: grid;
     gap: 16px;
   }
@@ -266,35 +251,150 @@ body {
   .main {
     display: grid;
     gap: 16px;
+  
+    /* Let the main column fill its grid area without being auto-centered inside it */
+    max-width: 1400px;
+    width: 100%;
+    margin: 0;      /* override any earlier auto-centering */
+    min-width: 0;   /* prevent overflow clipping in CSS Grid */
   }
   
-  /* Optional: slightly tighter cards on the left to minimize scroll */
+  /* Slightly tighter cards on the left to minimize scroll */
   .sidebar .card {
-    padding: 1.25rem;          /* was 2rem; tweak to taste */
-    margin-bottom: 1rem;       /* was 2rem */
+    padding: 1.25rem;    /* was 2rem; tweak to taste */
+    margin-bottom: 1rem; /* was 2rem */
   }
   
   /* Responsive: fall back to single column on smaller screens */
   @media (max-width: 1024px) {
     .layout {
       grid-template-columns: 1fr;
+      max-width: 100%;
     }
     .sidebar {
       position: static;
     }
   }
-
-  /* Center the entire two-column grid for equal left/right margins */
-.layout {
-    max-width: calc(320px + 1400px + 16px); /* sidebar (320) + main (1400) + gap (16) */
-    margin: 0 auto;
+  
+  /* ================= Optional helpers for the Question Filter row =================
+     If you want the Question Filter + "Skip blanks" checkbox tighter and left-aligned,
+     you can use these without changing global spacing elsewhere.
+  
+     Usage in JSX:
+       <div className="form-group qfilter">
+         <label htmlFor="questionId">Question Filter (optional)</label>
+         <div className="qfilter-row">
+           <input id="questionId" ... />
+           <label htmlFor="skipBlanks" className="inline">
+             <input id="skipBlanks" type="checkbox" ... />
+             <span>Skip blank / N-A responses before analysis</span>
+           </label>
+         </div>
+         <small className="qfilter-hint">…</small>
+       </div>
+  */
+  .main .form-group.qfilter > label[for="questionId"] {
+    margin-bottom: 0.25rem; /* tighter than default 0.5rem */
+  }
+  .main .form-group.qfilter .qfilter-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;               /* controls space between the input and the checkbox */
+    column-gap: 6px;
+    row-gap: 4px;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+  .main .form-group.qfilter input#questionId {
+    width: 240px;           /* keep the text input compact */
+    margin: 0;
+  }
+  .main .form-group.qfilter label.inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;               /* space between checkbox and its text */
+    margin: 0;
+    line-height: 1.1;
+  }
+  .main .form-group.qfilter input#skipBlanks {
+    margin: 0;              /* remove default checkbox margins */
+  }
+  .main .form-group.qfilter .qfilter-hint {
+    display: block;
+    font-size: 0.85rem;
+    color: #718096;
+    margin-top: 4px;
   }
   
-  /* Let the main column fill its grid area without being auto-centered inside it */
-  .main {
-    max-width: 1400px;
-    width: 100%;
-    margin: 0;       /* override earlier margin: 0 auto; */
-    min-width: 0;    /* important in CSS Grid to prevent overflow clipping */
+  .main .form-group.qfilter .qfilter-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
   }
+  
+  .main .form-group.qfilter input#questionId {
+    width: 240px;        /* adjust as you like */
+    flex: 0 0 20px;     /* prevents flex from stretching it */
+    margin: 0;
+    box-sizing: border-box;
+  }
+  
+  /* optional: responsive width */
+  @media (max-width: 480px) {
+    .main .form-group.qfilter input#questionId {
+      width: 100%;
+      flex: 1 1 auto;
+    }
+  }
+
+  /* Tight inline row for the skip-blanks hint */
+.form-group.qfilter label.qfilter-inline {
+    display: inline-flex;        /* override global block label */
+    align-items: center;
+    gap: 0;                    /* checkbox ↔ text spacing */
+    margin: 1px 0 0 0;           /* small top margin, no side/bottom gaps */
+    padding: 0;
+    line-height: 1.1;
+  }
+  
+  .form-group.qfilter label.qfilter-inline input[type="checkbox"] {
+    margin: 0;                   /* remove UA default checkbox margins */
+    padding: 0;
+  }
+  
+  .form-group.qfilter label.qfilter-inline span {
+    margin: 0;                   /* ensure no extra gap before text */
+    padding: 0;
+  }
+
+  /* Tight inline row for the skip-blanks hint */
+.form-group.qfilter .qfilter-hint-row {
+    display: inline-flex;          /* do not stretch full width */
+    align-items: center;
+    gap: 4px;                      /* spacing between checkbox and text */
+    margin-top: 4px;
+    width: fit-content;            /* keep it as small as its contents */
+    text-align: left;
+  }
+  
+  /* Force checkbox to a fixed size and remove default margins */
+  .form-group.qfilter .qfilter-hint-row input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    min-width: 16px;
+    min-height: 16px;
+    flex: 0 0 16px;                /* prevent flex from giving it extra space */
+    margin: 0;
+    padding: 0;
+  }
+  
+  /* Make sure the label text doesn’t add extra margins */
+  .form-group.qfilter .qfilter-hint-row label {
+    margin: 0;
+    line-height: 1.1;
+  }
+  
+  /* If the row still isn’t flush-left due to parent grid alignment */
+  .main .form-group.qfilter { justify-self: start; }
   

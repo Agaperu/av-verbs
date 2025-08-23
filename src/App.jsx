@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Papa from 'papaparse';
 import axios from 'axios';
 import { Upload, Download, FileText, Brain, AlertCircle, CheckCircle } from 'lucide-react';
@@ -66,25 +66,39 @@ const detectIdColumn = (rows) => {
   return null;
 };
 
-// === “Meaningful” text gate (lightweight, Python-style) ===
-const PLACEHOLDERS = new Set(['', ' ']);
-const normalizePlaceholder = (s) => (s || '').toString().replace(/[^0-9A-Za-z]+/g, ' ').trim().toLowerCase();
+// === “Meaningful” text gate (w/ common placeholders) ===
+const PLACEHOLDERS = new Set([
+  '', ' ', 'na', 'n a', 'n/a', 'none', 'no response', 'no comment', 'nil', '.', '-', '--'
+]);
+const normalizePlaceholder = (s) =>
+  (s || '').toString().replace(/[^0-9A-Za-z]+/g, ' ').trim().toLowerCase();
+
 const isMeaningful = (text, minChars = 3) => {
   const s = (text || '').toString().trim();
   if (s.length < minChars) return false;
   const norm = normalizePlaceholder(s);
   if (PLACEHOLDERS.has(norm)) return false;
-  return true; // (Approx token gate omitted; browser env)
+  return true;
 };
 
 // Build Python-like payload lines up to MAX_INPUT_CHARS
-function buildPayloadForColumn(rows, idCol, colName, maxChars = MAX_INPUT_CHARS) {
+function buildPayloadForColumn(rows, idCol, colName, maxChars = MAX_INPUT_CHARS, skipBlanks = true) {
   const lines = [];
   let total = 0;
   for (let i = 0; i < rows.length; i++) {
     const rid = String(rows[i]?.[idCol] ?? (i + 1));
-    const txt = String(rows[i]?.[colName] ?? '').replace(/\n/g, ' ').trim();
-    if (!isMeaningful(txt)) continue;
+    const raw = rows[i]?.[colName];
+    const txt = String(raw ?? '').replace(/\n/g, ' ').trim();
+
+    // honor toggle:
+    // - when ON: drop empties AND placeholders/very short
+    // - when OFF: drop only truly empty strings
+    if (skipBlanks) {
+      if (!isMeaningful(txt)) continue;
+    } else {
+      if (!txt) continue;
+    }
+
     const line = `record=${rid} | response=${txt}`;
     const add = line.length + 1;
     if (total + add > maxChars) break;
@@ -146,13 +160,14 @@ function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [modelName, setModelName] = useState('gpt-5');
   const [showPreview, setShowPreview] = useState(false);
-  const [outputFormat, setOutputFormat] = useState('long'); // 'long' or 'wide'
+  const [outputFormat, setOutputFormat] = useState('long'); // 'long' or 'wide' (kept for compatibility)
   const [questionId, setQuestionId] = useState(''); // optional filter (e.g., q24)
   const [idColumn, setIdColumn] = useState('respid'); // default like Python
+  const [skipBlankCells, setSkipBlankCells] = useState(true); // remove blanks/placeholders
   const fileInputRef = useRef(null);
 
   const defaultPrompt = `Your role: You are a senior survey research analyst.
-Your task: read the list of open-ended responses to the survey questions in the attached csv and identify the key themes. It is crucial that every ParticipantID goes into at least one theme category for each question. You may include categories for 'Other', 'Don't Know', and 'Refused' if needed.
+Your task: Read the list of open-ended responses to the survey questions in the attached csv and identify the key themes. It is crucial that every ParticipantID goes into at least one theme category for each question. You may include categories for 'Other', 'Don't Know', and 'Refused' if needed.
 Instructions: 
 1) Identify 6-9 themes that capture the main ideas expressed. 
 2) For each theme, provide: 
@@ -169,6 +184,23 @@ Instructions:
 "ParticipantID": ["row number1", "row number2"]
  }
 ]`;
+
+  /* === Editable Analysis Prompt (persisted) === */
+  const [analysisPrompt, setAnalysisPrompt] = useState(() => {
+    try {
+      return localStorage.getItem('analysisPrompt') || defaultPrompt;
+    } catch {
+      return defaultPrompt;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('analysisPrompt', analysisPrompt);
+    } catch { /* ignore */ }
+  }, [analysisPrompt]);
+
+  const resetPromptToDefault = () => setAnalysisPrompt(defaultPrompt);
 
   /* ===================== File handlers ===================== */
 
@@ -215,7 +247,7 @@ Instructions:
   /* ===================== One-shot analysis (Python-like) ===================== */
 
   async function llmThemeExtract({ columnName, model, idCol, headers }) {
-    const payload = buildPayloadForColumn(csvData, idCol, columnName, MAX_INPUT_CHARS);
+    const payload = buildPayloadForColumn(csvData, idCol, columnName, MAX_INPUT_CHARS, skipBlankCells);
     if (!payload || !payload.trim()) {
       return { ok: true, content: '[]' }; // nothing to analyze → empty array
     }
@@ -226,7 +258,7 @@ Instructions:
         role: 'user',
         content:
           `Analyze the following open-ended responses for column '${columnName}'.\n\n` +
-          `${defaultPrompt}\n\n` +
+          `${analysisPrompt}\n\n` +   // <-- use editable prompt here
           `Use the 'record' value as ParticipantID.\n\n` +
           `RESPONSES (one per line):\n${payload}`
       }
@@ -282,7 +314,7 @@ Instructions:
         }
       }
 
-      // Optional filter like Python loop would let you iterate all QUESTION_COLS
+      // Optional filter
       const qFilter = (questionId || '').trim().toLowerCase();
       let columnsToProcess = questionColumns;
       if (qFilter) {
@@ -308,12 +340,11 @@ Instructions:
           const status = r.error?.response?.status;
           const msg = r.error?.response?.data?.error?.message || r.error?.message || String(r.error);
           allResults[col] = { _error: `HTTP ${status || ''} ${msg}`.trim() };
-          // gentle pacing
           await sleep(1200);
           continue;
         }
 
-        // Python-style parse: keep raw on failure
+        // Parse: keep raw on failure
         try {
           const parsed = parseJsonMaybe(r.content);
           allResults[col] = parsed;
@@ -335,7 +366,7 @@ Instructions:
     }
   };
 
-  /* ===================== Export (LONG format changed) ===================== */
+  /* ===================== Export (LONG + WIDE) ===================== */
 
   const exportBothCSVs = () => {
     if (!results || Object.keys(results).length === 0) {
@@ -419,7 +450,6 @@ Instructions:
       };
   
       download(longCsv, longName);
-      // small delay so some browsers don’t coalesce the clicks
       setTimeout(() => download(wideCsv, wideName), 200);
   
       setSuccess('Exported both Long and Wide CSVs!');
@@ -446,13 +476,13 @@ Instructions:
       <div className="header" style={{ display: 'flex', justifyContent: 'center', padding: '8px 0', marginBottom: '8px' }}>
         <div>
           <img
-            src="/images/av-logo2.png"
+            src="/images/av-logo3.png"
             alt="American Viewpoint"
-            style={{ height: 200, width: 'auto', maxWidth: '90vw', display: 'block' }}
+            style={{ height: 150, width: 'auto', maxWidth: '90vw', display: 'block' }}
           />
         </div>
       </div>
-  
+
       {/* Two-column layout */}
       <div className="layout">
         {/* LEFT: API key + Upload */}
@@ -471,7 +501,7 @@ Instructions:
               />
             </div>
           </div>
-  
+
           {/* Upload */}
           <div className="card">
             <h2><Upload size={20} /> Upload CSV File</h2>
@@ -497,7 +527,7 @@ Instructions:
                 style={{ display: 'none' }}
               />
             </div>
-  
+
             {csvData && (
               <div className="form-group">
                 <p><strong>Loaded:</strong> {csvData.length} rows</p>
@@ -513,13 +543,13 @@ Instructions:
                     </p>
                   );
                 })()}
-  
+
                 {csvData.length > 1000 && (
                   <p style={{ color: '#e53e3e', fontSize: '0.875rem', marginTop: '0.5rem' }}>
                     ⚠️ Very large dataset: consider filtering to a specific question or sampling to avoid rate/size limits.
                   </p>
                 )}
-  
+
                 <div className="actions">
                   <button
                     className="btn btn-secondary"
@@ -532,7 +562,7 @@ Instructions:
                     Clear Data
                   </button>
                 </div>
-  
+
                 {showPreview && (
                   <div style={{ marginTop: '1rem', padding: '1rem', background: '#f7fafc', borderRadius: '8px' }}>
                     <h4 style={{ marginBottom: '0.5rem' }}>Data Preview (First 5 rows):</h4>
@@ -547,13 +577,13 @@ Instructions:
             )}
           </div>
         </aside>
-  
+
         {/* RIGHT: Analyze + Messages + Results */}
         <main className="main">
           {/* Analyze (ALWAYS VISIBLE) */}
           <div className="card">
             <h2><Brain size={20} /> Analyze Data</h2>
-  
+
             <div className="form-group">
               <label htmlFor="modelSelect">Model</label>
               <select
@@ -563,10 +593,10 @@ Instructions:
                 style={{ width: 260, padding: '6px 8px', borderRadius: 6 }}
               >
                 <option value="gpt-5">GPT-5 (Best quality)</option>
-                <option value="gpt-4o-mini">GPT-4o mini (Faster, higher TPM)</option>
+                <option value="gpt-5-mini">GPT-5 mini (Faster, higher TPM)</option>
               </select>
             </div>
-  
+
             <div className="form-group">
               <label htmlFor="idColumn">ID Column Name</label>
               <input
@@ -583,35 +613,64 @@ Instructions:
                 </div>
               )}
             </div>
-  
-            <div className="form-group">
+
+            <div className="form-group qfilter compact">
               <label htmlFor="questionId">Question Filter (optional)</label>
-              <input
-                type="text"
-                id="questionId"
-                value={questionId}
-                onChange={(e) => setQuestionId(e.target.value)}
-                placeholder="e.g., q24 (matches prefix)"
-                style={{ width: '260px' }}
-              />
+
+              <div className="qfilter-row">
+                <input
+                  type="text"
+                  id="questionId"
+                  value={questionId}
+                  onChange={(e) => setQuestionId(e.target.value)}
+                  placeholder="e.g., q24 (matches prefix)"
+                />
+              </div>
+
+              <div className="qfilter-hint-row">
+                <input
+                  id="skipBlanks"
+                  type="checkbox"
+                  checked={skipBlankCells}
+                  onChange={(e) => setSkipBlankCells(e.target.checked)}
+                />
+                <label htmlFor="skipBlanks" className="qfilter-inline">
+                  <span>(Uncheck to include placeholder responses. Truly empty cells are always skipped.)</span>
+                </label>
+              </div>
             </div>
-  
+
             <div className="form-group">
-              <label>Analysis Prompt</label>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <label>Analysis Prompt</label>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={resetPromptToDefault}
+                  style={{ padding: '0.4rem 0.75rem', fontSize: '0.9rem' }}
+                  title="Reset to the original default prompt"
+                >
+                  Reset to Default
+                </button>
+              </div>
+
               <textarea
-                value={defaultPrompt}
-                readOnly
+                value={analysisPrompt}
+                onChange={(e) => setAnalysisPrompt(e.target.value)}
                 rows={6}
                 style={{ fontFamily: 'monospace', fontSize: '0.875rem' }}
               />
+              <div style={{ fontSize: '0.8rem', color: '#718096', marginTop: 6 }}>
+                Tip: Keep this concise to reduce tokens; changes are saved automatically.
+              </div>
             </div>
-  
+
             {!csvData?.length && (
               <div style={{ marginTop: 8, color: '#718096', fontSize: '0.9rem' }}>
                 Upload a CSV to enable analysis.
               </div>
             )}
-  
+
             <div className="actions">
               <button
                 className="btn"
@@ -632,7 +691,7 @@ Instructions:
               </button>
             </div>
           </div>
-  
+
           {/* Messages */}
           {error && (
             <div className="error">
@@ -646,7 +705,7 @@ Instructions:
               {success}
             </div>
           )}
-  
+
           {/* Results (conditional) */}
           {results && Object.keys(results).length > 0 && (
             <div className="card">
@@ -657,7 +716,7 @@ Instructions:
                   Export CSVs
                 </button>
               </div>
-  
+
               <div className="results">
                 {Object.entries(results).map(([questionCol, themes]) => (
                   <div key={questionCol} className="theme-item">
@@ -701,8 +760,6 @@ Instructions:
       </div>
     </div>
   );
-  
-  
 }
 
 export default App;

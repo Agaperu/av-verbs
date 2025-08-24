@@ -489,7 +489,11 @@ Instructions:
         <aside className="sidebar">
           {/* API Key */}
           <div className="card">
-            <h2><Brain size={20} /> OpenAI API Configuration</h2>
+            <h2><img
+            src="/images/av-logo-gif-no_background.gif"
+            alt="American Viewpoint"
+            style={{ width: 20, height: 20, objectFit: 'contain', marginRight: 8, verticalAlign: 'middle' }}
+          /> OpenAI API Configuration</h2>
             <div className="form-group">
               <label htmlFor="apiKey">OpenAI API Key</label>
               <input
@@ -513,7 +517,7 @@ Instructions:
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
               >
-                <FileText size={48} style={{ marginBottom: '1rem', color: '#667eea' }} />
+                <FileText size={48} style={{ marginBottom: '1rem', color: '#00457f' }} />
                 <p>Drag and drop your CSV file here, or click to browse</p>
                 <p style={{ fontSize: '0.875rem', color: '#718096', marginTop: '0.5rem' }}>
                   {fileName || 'No file selected'}
@@ -582,7 +586,10 @@ Instructions:
         <main className="main">
           {/* Analyze (ALWAYS VISIBLE) */}
           <div className="card">
-            <h2><Brain size={20} /> Analyze Data</h2>
+            <h2><img
+            src="/images/av-logo-gif-no_background.gif"
+            alt="American Viewpoint"
+            style={{ width: 20, height: 20, objectFit: 'contain', marginRight: 8, verticalAlign: 'middle' }} /> Analyze Data</h2>
 
             <div className="form-group">
               <label htmlFor="modelSelect">Model</label>
@@ -593,7 +600,7 @@ Instructions:
                 style={{ width: 260, padding: '6px 8px', borderRadius: 6 }}
               >
                 <option value="gpt-5">GPT-5 (Best quality)</option>
-                <option value="gpt-5-mini">GPT-5 mini (Faster, higher TPM)</option>
+                <option value="gpt-5-mini">GPT-5 mini (Faster)</option>
               </select>
             </div>
 
@@ -628,7 +635,7 @@ Instructions:
               </div>
 
               <div className="qfilter-hint-row">
-                <input
+                {/*<input
                   id="skipBlanks"
                   type="checkbox"
                   checked={skipBlankCells}
@@ -636,7 +643,7 @@ Instructions:
                 />
                 <label htmlFor="skipBlanks" className="qfilter-inline">
                   <span>(Uncheck to include placeholder responses. Truly empty cells are always skipped.)</span>
-                </label>
+                </label>*/}
               </div>
             </div>
 
@@ -684,8 +691,8 @@ Instructions:
                   </>
                 ) : (
                   <>
-                    <Brain size={20} />
-                    Analyze with OpenAI
+                    
+                    Analyze
                   </>
                 )}
               </button>

@@ -1,4 +1,11 @@
-* {
+:root{
+    --sidebar-w: 400px;   /* ← tweak me */
+    --gap: 16px;
+    --main-max: 1400px;   /* ← tweak me */
+  }
+  
+* 
+{
     margin: 0;
     padding: 0;
     box-sizing: border-box;
@@ -61,11 +68,11 @@
   .form-group input:focus,
   .form-group textarea:focus {
     outline: none;
-    border-color: #667eea;
+    border-color: #00457f;
   }
   
   .btn {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #042c5c 0%, #00457f 100%);
     color: white;
     border: none;
     padding: 0.75rem 1.5rem;
@@ -108,12 +115,12 @@
   }
   
   .file-upload:hover {
-    border-color: #667eea;
+    border-color: #00457f;
     background-color: #f7fafc;
   }
   
   .file-upload.dragover {
-    border-color: #667eea;
+    border-color: #00457f;
     background-color: #edf2f7;
   }
   
@@ -122,7 +129,7 @@
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    color: #667eea;
+    color: #00457f;
     font-weight: 500;
   }
   
@@ -130,7 +137,7 @@
     width: 20px;
     height: 20px;
     border: 2px solid #e2e8f0;
-    border-top: 2px solid #667eea;
+    border-top: 2px solid #00457f;
     border-radius: 50%;
     animation: spin 1s linear infinite;
   }
@@ -152,7 +159,7 @@
     border-radius: 8px;
     padding: 1rem;
     margin-bottom: 1rem;
-    border-left: 4px solid #667eea;
+    border-left: 4px solid #00457f;
   }
   
   .theme-item h3 {
@@ -228,36 +235,34 @@
   }
   
   /* === Two-column layout === */
-  .layout {
+  .layout{
     display: grid;
-    grid-template-columns: 320px 1fr; /* left sidebar width, right grows */
-    gap: 16px;
+    grid-template-columns: var(--sidebar-w) 1fr;
+    gap: var(--gap);
     align-items: start;
   
-    /* Center the entire two-column grid for equal left/right margins */
-    max-width: calc(320px + 1400px + 16px); /* sidebar (320) + main (1400) + gap (16) */
+    /* keeps equal L/R margins and matches your chosen widths */
+    max-width: calc(var(--sidebar-w) + var(--gap) + var(--main-max));
     margin: 0 auto;
   }
   
-  /* Left column stays visible while scrolling the right side */
-  .sidebar {
-    position: sticky;
-    top: 16px;      /* adjust if your header is taller */
+  .main{
     display: grid;
     gap: 16px;
-  }
-  
-  /* Right column stacks its cards with spacing */
-  .main {
-    display: grid;
-    gap: 16px;
-  
-    /* Let the main column fill its grid area without being auto-centered inside it */
-    max-width: 1400px;
+    max-width: var(--main-max);
     width: 100%;
-    margin: 0;      /* override any earlier auto-centering */
-    min-width: 0;   /* prevent overflow clipping in CSS Grid */
+    margin: 0;       /* ensure no extra centering inside grid area */
+    min-width: 0;    /* prevent overflow in grid */
   }
+  
+  /* left column */
+  .sidebar{
+    position: sticky;
+    top: 16px;
+    display: grid;
+    gap: 16px;
+  }
+  
   
   /* Slightly tighter cards on the left to minimize scroll */
   .sidebar .card {

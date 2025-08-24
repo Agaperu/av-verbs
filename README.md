@@ -1,11 +1,11 @@
 # CSV Analysis with OpenAI
 
-A modern web application that allows you to upload CSV files, analyze them using OpenAI's GPT-4 API, and export the results. Perfect for survey research and qualitative data analysis.
+A web application that allows you to upload CSV files, analyze them using OpenAI's GPT-5 and GPT-5 Mini API, and export the results.
 
 ## Features
 
 - 📁 **CSV Upload**: Drag and drop or browse to upload CSV files
-- 🤖 **AI Analysis**: Uses OpenAI GPT-4 to identify themes in your data
+- 🤖 **AI Analysis**: Uses OpenAI GPT-5 to identify themes in your data
 - 📊 **Structured Output**: Returns themes with labels, definitions, keywords, and participant IDs
 - 💾 **CSV Export**: Download analysis results as a CSV file
 - 🎨 **Modern UI**: Clean, responsive design with beautiful animations

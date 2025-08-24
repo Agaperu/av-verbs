@@ -404,7 +404,7 @@ Instructions:
         }
       });
       const longCsv = Papa.unparse(longRows);
-      const longName = `themes_by_question_long_${new Date().toISOString().split('T')[0]}.csv`;
+      const longName = `themes_by_question_${new Date().toISOString().split('T')[0]}.csv`;
   
       // ---------- WIDE (binary codes per theme)
       const resolvedIdCol = resolveIdColumn(csvData, idColumn) || 'user_id';
@@ -434,7 +434,7 @@ Instructions:
         wide.push(rowOut);
       });
       const wideCsv = Papa.unparse(wide);
-      const wideName = `openrouter_codes_by_question_${new Date().toISOString().split('T')[0]}.csv`;
+      const wideName = `codes_by_question_${new Date().toISOString().split('T')[0]}.csv`;
   
       // ---------- trigger both downloads
       const download = (csvText, filename) => {

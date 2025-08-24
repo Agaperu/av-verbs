@@ -17,7 +17,7 @@
       sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background-image: url("/images/image002.png");
+    background-image: url("./assets/image002.png");
     min-height: 100vh;
     color: #333;
   }

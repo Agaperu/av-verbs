@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import Papa from 'papaparse';
 import axios from 'axios';
 import { Upload, Download, FileText, Brain, AlertCircle, CheckCircle } from 'lucide-react';
+import logoUrl from './assets/av-logo3.png'
+import logoGif from './assets/av-logo-gif-no_background.gif'
 
 /* ===================== Python-style constants & helpers ===================== */
 
@@ -476,7 +478,7 @@ Instructions:
       <div className="header" style={{ display: 'flex', justifyContent: 'center', padding: '8px 0', marginBottom: '8px' }}>
         <div>
           <img
-            src="/images/av-logo3.png"
+            src={logoUrl}
             alt="American Viewpoint"
             style={{ height: 150, width: 'auto', maxWidth: '90vw', display: 'block' }}
           />
@@ -490,7 +492,7 @@ Instructions:
           {/* API Key */}
           <div className="card">
             <h2><img
-            src="/images/av-logo-gif-no_background.gif"
+            src={logoGif}
             alt="American Viewpoint"
             style={{ width: 20, height: 20, objectFit: 'contain', marginRight: 8, verticalAlign: 'middle' }}
           /> OpenAI API Configuration</h2>
@@ -587,7 +589,7 @@ Instructions:
           {/* Analyze (ALWAYS VISIBLE) */}
           <div className="card">
             <h2><img
-            src="/images/av-logo-gif-no_background.gif"
+            src={logoGif}
             alt="American Viewpoint"
             style={{ width: 20, height: 20, objectFit: 'contain', marginRight: 8, verticalAlign: 'middle' }} /> Analyze Data</h2>
 

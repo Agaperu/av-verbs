@@ -4,11 +4,17 @@
     --main-max: 1400px;   /* ← tweak me */
   }
   
-* 
-{
+  *
+  {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+  }
+  
+  /* Ensure full-height layout and hide any accidental horizontal overflow */
+  html, body {
+    height: 100%;
+    overflow-x: hidden;
   }
   
   body {
@@ -17,7 +23,10 @@
       sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background-image: url("./assets/image002.png");
+  
+    /* ✅ Fix: use cover + no-repeat to avoid vertical seam on large screens */
+    background: #0b0d13 url("./assets/image002.png") center center / cover no-repeat;
+  
     min-height: 100vh;
     color: #333;
   }
@@ -263,7 +272,6 @@
     gap: 16px;
   }
   
-  
   /* Slightly tighter cards on the left to minimize scroll */
   .sidebar .card {
     padding: 1.25rem;    /* was 2rem; tweak to taste */
@@ -352,9 +360,9 @@
       flex: 1 1 auto;
     }
   }
-
+  
   /* Tight inline row for the skip-blanks hint */
-.form-group.qfilter label.qfilter-inline {
+  .form-group.qfilter label.qfilter-inline {
     display: inline-flex;        /* override global block label */
     align-items: center;
     gap: 0;                    /* checkbox ↔ text spacing */
@@ -372,9 +380,9 @@
     margin: 0;                   /* ensure no extra gap before text */
     padding: 0;
   }
-
+  
   /* Tight inline row for the skip-blanks hint */
-.form-group.qfilter .qfilter-hint-row {
+  .form-group.qfilter .qfilter-hint-row {
     display: inline-flex;          /* do not stretch full width */
     align-items: center;
     gap: 4px;                      /* spacing between checkbox and text */

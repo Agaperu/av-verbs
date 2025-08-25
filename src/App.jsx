@@ -2,8 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import Papa from 'papaparse';
 import axios from 'axios';
 import { Upload, Download, FileText, Brain, AlertCircle, CheckCircle } from 'lucide-react';
-import logoUrl from './assets/av-logo3.png'
-import logoGif from './assets/av-logo-gif-no_background.gif'
+import logoUrl from './assets/av-logo3.png';
+import logoGif from './assets/av-logo-gif-no_background.gif';
 
 /* ===================== Python-style constants & helpers ===================== */
 
@@ -92,9 +92,7 @@ function buildPayloadForColumn(rows, idCol, colName, maxChars = MAX_INPUT_CHARS,
     const raw = rows[i]?.[colName];
     const txt = String(raw ?? '').replace(/\n/g, ' ').trim();
 
-    // honor toggle:
-    // - when ON: drop empties AND placeholders/very short
-    // - when OFF: drop only truly empty strings
+    // honor toggle
     if (skipBlanks) {
       if (!isMeaningful(txt)) continue;
     } else {
@@ -162,7 +160,7 @@ function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [modelName, setModelName] = useState('gpt-5');
   const [showPreview, setShowPreview] = useState(false);
-  const [outputFormat, setOutputFormat] = useState('long'); // 'long' or 'wide' (kept for compatibility)
+  const [outputFormat, setOutputFormat] = useState('long'); // kept for compatibility
   const [questionId, setQuestionId] = useState(''); // optional filter (e.g., q24)
   const [idColumn, setIdColumn] = useState('respid'); // default like Python
   const [skipBlankCells, setSkipBlankCells] = useState(true); // remove blanks/placeholders
@@ -203,6 +201,36 @@ Instructions:
   }, [analysisPrompt]);
 
   const resetPromptToDefault = () => setAnalysisPrompt(defaultPrompt);
+
+  /* === Logo reset handlers (logo acts as reset button) === */
+  const SOFT_RESET_KEYS = [
+    'analysisPrompt',
+    'app_version'
+  ];
+
+  function softReset() {
+    try {
+      SOFT_RESET_KEYS.forEach((k) => localStorage.removeItem(k));
+    } catch { /* ignore */ }
+    window.location.reload();
+  }
+
+  function hardReset() {
+    try {
+      localStorage.clear();
+    } catch { /* ignore */ }
+    window.location.reload();
+  }
+
+  function handleLogoClick(e) {
+    const hard = e.shiftKey || e.altKey;
+    const msg = hard
+      ? 'Hard reset? This will clear ALL saved settings for this app.'
+      : 'Reset saved settings? (API key is not cleared unless you store it in localStorage)';
+    if (window.confirm(msg)) {
+      hard ? hardReset() : softReset();
+    }
+  }
 
   /* ===================== File handlers ===================== */
 
@@ -260,7 +288,7 @@ Instructions:
         role: 'user',
         content:
           `Analyze the following open-ended responses for column '${columnName}'.\n\n` +
-          `${analysisPrompt}\n\n` +   // <-- use editable prompt here
+          `${analysisPrompt}\n\n` +
           `Use the 'record' value as ParticipantID.\n\n` +
           `RESPONSES (one per line):\n${payload}`
       }
@@ -474,15 +502,23 @@ Instructions:
 
   return (
     <div className="container">
-      {/* Header / Logo */}
+      {/* Header / Logo (acts as reset button) */}
       <div className="header" style={{ display: 'flex', justifyContent: 'center', padding: '8px 0', marginBottom: '8px' }}>
-        <div>
+        <button
+          className="logo-button"
+          onClick={handleLogoClick}
+          onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && handleLogoClick(e)}
+          aria-label="Reset app"
+          title="Click to reset (Shift/Alt + Click for hard reset)"
+          style={{ background: 'transparent', border: 0, padding: 0, cursor: 'pointer', lineHeight: 0 }}
+        >
           <img
             src={logoUrl}
             alt="American Viewpoint"
+            className="logo-img"
             style={{ height: 150, width: 'auto', maxWidth: '90vw', display: 'block' }}
           />
-        </div>
+        </button>
       </div>
 
       {/* Two-column layout */}
@@ -491,11 +527,14 @@ Instructions:
         <aside className="sidebar">
           {/* API Key */}
           <div className="card">
-            <h2><img
-            src={logoGif}
-            alt="American Viewpoint"
-            style={{ width: 20, height: 20, objectFit: 'contain', marginRight: 8, verticalAlign: 'middle' }}
-          /> OpenAI API Configuration</h2>
+            <h2>
+              <img
+                src={logoGif}
+                alt="American Viewpoint"
+                style={{ width: 20, height: 20, objectFit: 'contain', marginRight: 8, verticalAlign: 'middle' }}
+              />{' '}
+              OpenAI API Configuration
+            </h2>
             <div className="form-group">
               <label htmlFor="apiKey">OpenAI API Key</label>
               <input
@@ -588,10 +627,14 @@ Instructions:
         <main className="main">
           {/* Analyze (ALWAYS VISIBLE) */}
           <div className="card">
-            <h2><img
-            src={logoGif}
-            alt="American Viewpoint"
-            style={{ width: 20, height: 20, objectFit: 'contain', marginRight: 8, verticalAlign: 'middle' }} /> Analyze Data</h2>
+            <h2>
+              <img
+                src={logoGif}
+                alt="American Viewpoint"
+                style={{ width: 20, height: 20, objectFit: 'contain', marginRight: 8, verticalAlign: 'middle' }}
+              />{' '}
+              Analyze Data
+            </h2>
 
             <div className="form-group">
               <label htmlFor="modelSelect">Model</label>
@@ -637,15 +680,7 @@ Instructions:
               </div>
 
               <div className="qfilter-hint-row">
-                {/*<input
-                  id="skipBlanks"
-                  type="checkbox"
-                  checked={skipBlankCells}
-                  onChange={(e) => setSkipBlankCells(e.target.checked)}
-                />
-                <label htmlFor="skipBlanks" className="qfilter-inline">
-                  <span>(Uncheck to include placeholder responses. Truly empty cells are always skipped.)</span>
-                </label>*/}
+                {/* If you re-enable the checkbox, place it here */}
               </div>
             </div>
 
@@ -692,10 +727,7 @@ Instructions:
                     Analyzing...
                   </>
                 ) : (
-                  <>
-                    
-                    Analyze
-                  </>
+                  <>Analyze</>
                 )}
               </button>
             </div>

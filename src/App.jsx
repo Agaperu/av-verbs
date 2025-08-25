@@ -169,7 +169,7 @@ function App() {
   const fileInputRef = useRef(null);
 
   const defaultPrompt = `Your role: You are a senior survey research analyst.
-Your task: Read the list of open-ended responses to the survey questions in the attached csv and identify the key themes. It is crucial that every ParticipantID goes into at least one theme category for each question. You may include categories for 'Other', 'Don't Know', and 'Refused' if needed.
+Your task: Read the list of open-ended responses to the survey question, <INSERT SURVEY QUESTION(S) HERE>, in the attached csv and identify the key themes. It is CRUCIAL that every ParticipantID goes into AT LEAST one theme category for each question. You may include categories for 'Other', 'Don't Know', and 'Refused' if needed.
 Instructions: 
 1) Identify 6-9 themes that capture the main ideas expressed. 
 2) For each theme, provide: 

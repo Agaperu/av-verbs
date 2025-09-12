@@ -411,3 +411,90 @@
   /* If the row still isn’t flush-left due to parent grid alignment */
   .main .form-group.qfilter { justify-self: start; }
   
+  /* === Login modal === */
+.login-backdrop{
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  backdrop-filter: blur(2px);
+  z-index: 9999;
+}
+
+.login-card{
+  width: 100%;
+  max-width: 440px;
+  background: rgba(255,255,255,0.9);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+  padding: 28px;
+  border: 1px solid rgba(0,0,0,0.06);
+}
+
+.login-logo{
+  display: block;
+  height: 72px;
+  width: auto;
+  margin: 4px auto 12px;
+}
+
+.login-title{
+  margin: 0 0 6px 0;
+  text-align: center;
+  font-size: 1.6rem;
+  color: #1a365d;
+  font-weight: 700;
+}
+
+.login-subtitle{
+  margin: 0 0 18px 0;
+  text-align: center;
+  color: #4a5568;
+}
+
+.login-form{
+  display: grid;
+  gap: 10px;
+}
+
+.login-label{
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.login-input{
+  width: 100%;
+  padding: 0.75rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 1rem;
+  transition: border-color .15s;
+}
+
+.login-input:focus{
+  outline: none;
+  border-color: #00457f;
+}
+
+.login-error{
+  background: #fed7d7;
+  color: #c53030;
+  border-left: 4px solid #c53030;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.95rem;
+}
+
+.login-btn{
+  width: 100%;
+  justify-content: center;
+  margin-top: 6px;
+}
+
+.login-note{
+  margin-top: 12px;
+  font-size: .85rem;
+  color: #718096;
+  text-align: center;
+}

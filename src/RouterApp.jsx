@@ -6,6 +6,9 @@ import KnowledgeBotApp from "./App";
 import ToplinesApp from "./ToplinesApp";
 import Login from "./Login";
 
+// ⬇️ Add your logo import
+import avLogo from "./assets/av-logo.png";
+
 const AUTH_KEY = "av_authed_v1";
 
 function Nav({ onLogout }) {
@@ -23,17 +26,24 @@ function Nav({ onLogout }) {
   });
 
   return (
-    <header style={{
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      padding: "12px 16px",
-      marginBottom: 10,
-      borderBottom: "1px solid rgba(0,0,0,0.08)",
-      background: "var(--background-color, #fff)"
-    }}>
+    <header
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "12px 16px",
+        marginBottom: 10,
+        borderBottom: "1px solid rgba(0,0,0,0.08)",
+        background: "var(--background-color, #fff)",
+      }}
+    >
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <strong style={{ fontSize: 18 }}>American Viewpoint Tools</strong>
+        {/* ⬇️ Replace title text with logo */}
+        <img
+          src={avLogo}
+          alt="American Viewpoint"
+          style={{ height: 40, width: "auto", display: "block" }}
+        />
       </div>
       <nav style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <NavLink to="/bot" style={linkStyle}>Verbatims</NavLink>

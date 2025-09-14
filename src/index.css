@@ -500,3 +500,51 @@
   text-align: center;
 }
 
+/* (optional) */
+.config-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 1rem;
+}
+.config-tabs a {
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-weight: 500;
+  text-decoration: none;
+  color: #1a365d;
+  border: 1px solid rgba(0,0,0,0.10);
+}
+.config-tabs a.active {
+  background: #1a365d;
+  color: white;
+}
+
+/* Floating logout button */
+.logout-btn {
+  position: fixed !important;   /* make sure it's fixed to the viewport */
+  top: 12px !important;
+  right: 12px !important;       /* ⬅️ ensure it sticks to the right edge */
+  left: auto !important;        /* ⬅️ override any flex/left alignment */
+  z-index: 1000;
+  padding: 6px 12px;
+  font-size: 0.95rem;
+  border-radius: 8px;
+}
+
+/* Adjust size/spacing for tablets */
+@media (max-width: 768px) {
+  .logout-btn {
+    top: 8px !important;
+    right: 8px !important;
+    font-size: 0.85rem;
+  }
+}
+
+/* Super small screens (phones) */
+@media (max-width: 480px) {
+  .logout-btn {
+    top: 6px !important;
+    right: 6px !important;
+    font-size: 0.8rem;
+  }
+}

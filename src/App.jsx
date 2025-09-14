@@ -1,4 +1,6 @@
+// App.jsx
 import React, { useState, useRef, useEffect } from 'react';
+import { NavLink } from 'react-router-dom';
 import Papa from 'papaparse';
 import axios from 'axios';
 import { Upload, Download, FileText, Brain, AlertCircle, CheckCircle } from 'lucide-react';
@@ -7,7 +9,7 @@ import logoGif from './assets/av-logo-gif-no_background.gif';
 
 /* ===================== Python-style constants & helpers ===================== */
 
-// Match Python’s big cap (be mindful of your model/rate limits)
+// Match Python’s big cap (be mindful of your model/rate limits) – from your current file
 const MAX_INPUT_CHARS = 120000;
 
 // Simple backoff for 429 / 5xx (honors Retry-After)
@@ -69,9 +71,7 @@ const detectIdColumn = (rows) => {
 };
 
 // === “Meaningful” text gate (w/ common placeholders) ===
-const PLACEHOLDERS = new Set([
-  '', ' ', 'na', 'n a', 'n/a', 'none', 'no response', 'no comment', 'nil', '.', '-', '--'
-]);
+const PLACEHOLDERS = new Set(['', ' ', 'na', 'n a', 'n/a', 'none', 'no response', 'no comment', 'nil', '.', '-', '--']);
 const normalizePlaceholder = (s) =>
   (s || '').toString().replace(/[^0-9A-Za-z]+/g, ' ').trim().toLowerCase();
 
@@ -147,6 +147,27 @@ function parseJsonMaybe(text) {
   throw new Error('JSON parse failed');
 }
 
+/* ===================== Small Tabs component for the config card ===================== */
+
+function ConfigTabs() {
+  const tabStyle = ({ isActive }) => ({
+    padding: '8px 12px',
+    borderRadius: 6,
+    fontWeight: 500,
+    textDecoration: 'none',
+    color: isActive ? 'white' : '#1a365d',
+    background: isActive ? '#1a365d' : 'transparent',
+    border: '1px solid rgba(0,0,0,0.10)',
+  });
+
+  return (
+    <div className="config-tabs" style={{ display: 'flex', gap: 8, marginBottom: '1rem' }}>
+      <NavLink to="/bot" style={tabStyle}>Verbatims</NavLink>
+      <NavLink to="/toplines" style={tabStyle}>Memos</NavLink>
+    </div>
+  );
+}
+
 /* ===================== Component ===================== */
 
 function App() {
@@ -160,7 +181,7 @@ function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [modelName, setModelName] = useState('gpt-5');
   const [showPreview, setShowPreview] = useState(false);
-  const [outputFormat, setOutputFormat] = useState('long'); // kept for compatibility
+  const [outputFormat] = useState('long'); // kept for compatibility
   const [questionId, setQuestionId] = useState(''); // optional filter (e.g., q24)
   const [idColumn, setIdColumn] = useState('respid'); // default like Python
   const [skipBlankCells, setSkipBlankCells] = useState(true); // remove blanks/placeholders
@@ -203,10 +224,7 @@ Instructions:
   const resetPromptToDefault = () => setAnalysisPrompt(defaultPrompt);
 
   /* === Logo reset handlers (logo acts as reset button) === */
-  const SOFT_RESET_KEYS = [
-    'analysisPrompt',
-    'app_version'
-  ];
+  const SOFT_RESET_KEYS = ['analysisPrompt', 'app_version'];
 
   function softReset() {
     try {
@@ -214,14 +232,10 @@ Instructions:
     } catch { /* ignore */ }
     window.location.reload();
   }
-
   function hardReset() {
-    try {
-      localStorage.clear();
-    } catch { /* ignore */ }
+    try { localStorage.clear(); } catch { /* ignore */ }
     window.location.reload();
   }
-
   function handleLogoClick(e) {
     const hard = e.shiftKey || e.altKey;
     const msg = hard
@@ -434,7 +448,7 @@ Instructions:
         }
       });
       const longCsv = Papa.unparse(longRows);
-      const longName = `themes_by_question_${new Date().toISOString().split('T')[0]}.csv`;
+      const longName = `themes_by_question_${new Date().toISOString().split( 'T')[0]}.csv`;
   
       // ---------- WIDE (binary codes per theme)
       const resolvedIdCol = resolveIdColumn(csvData, idColumn) || 'user_id';
@@ -535,6 +549,10 @@ Instructions:
               />{' '}
               OpenAI API Configuration
             </h2>
+
+            {/* Tabs inside the card */}
+            <ConfigTabs />
+
             <div className="form-group">
               <label htmlFor="apiKey">OpenAI API Key</label>
               <input
@@ -659,81 +677,40 @@ Instructions:
                 placeholder="e.g., respid, record, participant_id"
                 style={{ width: '240px' }}
               />
-              {csvData && (
-                <div style={{ fontSize: '0.8rem', color: '#718096', marginTop: 4 }}>
-                  Detected candidate: <code>{detectIdColumn(csvData) || '—'}</code>
-                </div>
-              )}
             </div>
 
-            <div className="form-group qfilter compact">
+            <div className="form-group qfilter">
               <label htmlFor="questionId">Question Filter (optional)</label>
-
               <div className="qfilter-row">
                 <input
                   type="text"
                   id="questionId"
                   value={questionId}
                   onChange={(e) => setQuestionId(e.target.value)}
-                  placeholder="e.g., q24 (matches prefix)"
+                  placeholder="e.g., q24"
                 />
-              </div>
-
-              <div className="qfilter-hint-row">
-                {/* If you re-enable the checkbox, place it here */}
-              </div>
-            </div>
-
-            <div className="form-group">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <label>Analysis Prompt</label>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={resetPromptToDefault}
-                  style={{ padding: '0.4rem 0.75rem', fontSize: '0.9rem' }}
-                  title="Reset to the original default prompt"
-                >
-                  Reset to Default
-                </button>
-              </div>
-
-              <textarea
-                value={analysisPrompt}
-                onChange={(e) => setAnalysisPrompt(e.target.value)}
-                rows={6}
-                style={{ fontFamily: 'monospace', fontSize: '0.875rem' }}
-              />
-              <div style={{ fontSize: '0.8rem', color: '#718096', marginTop: 6 }}>
-                Tip: Keep this concise to reduce tokens; changes are saved automatically.
+                {/* <label htmlFor="skipBlanks" className="qfilter-inline">
+                  <input
+                    id="skipBlanks"
+                    type="checkbox"
+                    checked={skipBlankCells}
+                    onChange={(e) => setSkipBlankCells(e.target.checked)}
+                  />
+                  <span>Skip blank / N-A responses before analysis</span>
+                </label> */}
               </div>
             </div>
 
-            {!csvData?.length && (
-              <div style={{ marginTop: 8, color: '#718096', fontSize: '0.9rem' }}>
-                Upload a CSV to enable analysis.
-              </div>
-            )}
-
-            <div className="actions">
-              <button
-                className="btn"
-                onClick={analyzeData}
-                disabled={isLoading || !apiKey.trim() || !csvData?.length}
-              >
-                {isLoading ? (
-                  <>
-                    <div className="spinner"></div>
-                    Analyzing...
-                  </>
-                ) : (
-                  <>Analyze</>
-                )}
+            <div className="actions" style={{ marginTop: 12 }}>
+              <button className="btn" onClick={analyzeData} disabled={isLoading}>
+                {isLoading ? (<><div className="spinner"></div>Analyzing…</>) : (<>Analyze</>)}
+              </button>
+              <button className="btn btn-secondary" onClick={exportBothCSVs} disabled={!results || isLoading}>
+                <Download size={16} /> Export CSVs
               </button>
             </div>
           </div>
 
-          {/* Messages */}
           {error && (
             <div className="error">
               <AlertCircle size={20} style={{ marginRight: '0.5rem' }} />
@@ -747,50 +724,35 @@ Instructions:
             </div>
           )}
 
-          {/* Results (conditional) */}
-          {results && Object.keys(results).length > 0 && (
+          {/* Results */}
+          {results && (
             <div className="card">
-              <h2>Analysis Results</h2>
-              <div className="actions" style={{ marginBottom: '1rem' }}>
-                <button className="btn btn-success" onClick={exportBothCSVs}>
-                  <Download size={20} />
-                  Export CSVs
-                </button>
-              </div>
-
+              <h2>Themes</h2>
               <div className="results">
-                {Object.entries(results).map(([questionCol, themes]) => (
-                  <div key={questionCol} className="theme-item">
-                    <h3>Question: {questionCol}</h3>
+                {Object.entries(results).map(([qcol, themes]) => (
+                  <div key={qcol} className="theme-item">
+                    <h3>{qcol}</h3>
                     {Array.isArray(themes) ? (
-                      themes.map((theme, index) => (
-                        <div key={index} style={{ marginBottom: '1rem', padding: '1rem', background: '#f8f9fa', borderRadius: '4px' }}>
-                          <h4>{theme.ThemeLabel || `Theme ${index + 1}`}</h4>
-                          <p><strong>Definition:</strong> {theme.Definition || 'No definition provided'}</p>
-                          {theme.RepresentativeKeywords && theme.RepresentativeKeywords.length > 0 && (
-                            <div>
-                              <strong>Keywords:</strong>
-                              <div className="keywords">
-                                {theme.RepresentativeKeywords.map((keyword, keyIndex) => (
-                                  <span key={keyIndex} className="keyword">{keyword}</span>
-                                ))}
-                              </div>
+                      themes.map((t, i) => (
+                        <div key={i} style={{ marginBottom: 12 }}>
+                          <strong>{t.ThemeLabel || `Theme ${i + 1}`}</strong>
+                          {t.Definition && <p>{t.Definition}</p>}
+                          {Array.isArray(t.RepresentativeKeywords) && t.RepresentativeKeywords.length > 0 && (
+                            <div className="keywords">
+                              {t.RepresentativeKeywords.map((k, j) => (
+                                <span className="keyword" key={j}>{k}</span>
+                              ))}
                             </div>
                           )}
-                          {theme.ParticipantID && (
+                          {t.ParticipantID && (
                             <div className="participants">
-                              <strong>Participant IDs:</strong>{' '}
-                              {Array.isArray(theme.ParticipantID)
-                                ? theme.ParticipantID.join(', ')
-                                : String(theme.ParticipantID ?? '')}
+                              IDs: {Array.isArray(t.ParticipantID) ? t.ParticipantID.join(', ') : String(t.ParticipantID)}
                             </div>
                           )}
                         </div>
                       ))
                     ) : (
-                      <p style={{ color: '#e53e3e' }}>
-                        {themes._error ? `Error: ${themes._error}` : 'Parse issue: raw model text was kept internally.'}
-                      </p>
+                      <pre style={{ whiteSpace: 'pre-wrap' }}>{typeof themes === 'object' ? JSON.stringify(themes, null, 2) : String(themes)}</pre>
                     )}
                   </div>
                 ))}

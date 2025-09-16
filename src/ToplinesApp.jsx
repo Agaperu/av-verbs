@@ -272,22 +272,49 @@ function MultiCheckList({
             placeholder={placeholder}
             style={{
               width: "100%", padding: "6px 8px", borderRadius: 6,
-              border: "1px solid #e2e8f0", outline: "none"
+              border: "1px solid #e2e8f0", outline: "none", fontSize: "0.85rem"
             }}
           />
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-        <button type="button" className="btn btn-secondary" onClick={selectAll} disabled={filtered.length === 0 || allSelected}>
+      {/* compact utility buttons */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+        <button
+          type="button"
+          onClick={selectAll}
+          disabled={filtered.length === 0 || allSelected}
+          style={{
+            padding: "3px 8px",
+            fontSize: "0.75rem",
+            borderRadius: "4px",
+            background: "#f7fafc",
+            border: "1px solid #cbd5e0",
+            cursor: "pointer",
+            color: "#2d3748"
+          }}
+        >
           Select all
         </button>
-        <button type="button" className="btn btn-secondary" onClick={clearFiltered} disabled={!someSelected}>
+        <button
+          type="button"
+          onClick={clearFiltered}
+          disabled={!someSelected}
+          style={{
+            padding: "3px 8px",
+            fontSize: "0.75rem",
+            borderRadius: "4px",
+            background: "#f7fafc",
+            border: "1px solid #cbd5e0",
+            cursor: "pointer",
+            color: "#2d3748"
+          }}
+        >
           Clear
         </button>
       </div>
 
-      {/* Responsive grid list */}
+      {/* Responsive grid list (with light gray container) */}
       <div
         style={{
           display: "grid",
@@ -298,7 +325,7 @@ function MultiCheckList({
           border: "1px solid #e2e8f0",
           borderRadius: 8,
           padding: 8,
-          background: "#fff",
+          background: "#f7fafc", // light gray for visibility
         }}
       >
         {filtered.map((h) => {
@@ -308,14 +335,16 @@ function MultiCheckList({
               key={h}
               style={{
                 display: "grid",
-                gridTemplateColumns: "20px 1fr",
+                gridTemplateColumns: "18px 1fr",
                 alignItems: "center",
-                gap: 8,
-                border: "1px solid rgba(0,0,0,0.06)",
-                borderRadius: 8,
-                padding: "8px 10px",
+                gap: 6,
+                border: "1px solid rgba(0,0,0,0.08)",
+                borderRadius: 6,
+                padding: "4px 6px",
                 cursor: "pointer",
-                background: checked ? "rgba(0, 69, 127, 0.06)" : "transparent",
+                fontSize: "0.8rem",
+                lineHeight: 1.3,
+                background: checked ? "rgba(0, 69, 127, 0.08)" : "white",
               }}
               title={h}
             >
@@ -357,6 +386,67 @@ function ConfigTabs() {
   );
 }
 
+/* ===================== Overview helpers & components ===================== */
+
+function groupNamesForQuestion(qToplines) {
+  return Object.keys(qToplines || {});
+}
+
+function normalizeChartData(table) {
+  // table is [{ val, pct, w }]
+  return (table || []).map((r) => ({
+    name: String(r.val),
+    value: Number(r.pct || 0),
+    fill: colorForLabel(String(r.val)),
+  }));
+}
+
+function QuestionBlock({ q, groups, summaries, selectedGroup, onChangeGroup }) {
+  const groupList = groupNamesForQuestion(groups);
+  const safeGroup = groupList.includes(selectedGroup) ? selectedGroup : (groupList[0] || "Total");
+  const table = groups[safeGroup] || [];
+  const data = normalizeChartData(table);
+
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
+        <h3 style={{ margin: 0 }}>{q}</h3>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <label style={{ fontSize: 12, color: "#4A5568" }}>Group:</label>
+          <select
+            value={safeGroup}
+            onChange={(e) => onChangeGroup(q, e.target.value)}
+            style={{ padding: "4px 8px", borderRadius: 6 }}
+          >
+            {groupList.map((g) => <option key={g} value={g}>{g}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div style={{ width: "100%", height: 220 }}>
+        <ResponsiveContainer>
+          <BarChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="name" tick={{ fontSize: 12 }} height={40} interval={0} />
+            <YAxis tick={{ fontSize: 12 }} domain={[0, 100]} />
+            <Tooltip />
+            <Bar dataKey="value" isAnimationActive>
+              <LabelList dataKey="value" position="top" formatter={(v) => `${v.toFixed(1)}%`} />
+              {data.map((d, i) => <Cell key={i} fill={d.fill} />)}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {summaries?.[q] && (
+        <div style={{ marginTop: 8, padding: 10, background: "#f7fafc", borderRadius: 8, fontSize: "0.9rem", whiteSpace: "pre-wrap" }}>
+          {summaries[q]}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ===================== Component ===================== */
 
 export default function ToplinesApp() {
@@ -383,6 +473,10 @@ export default function ToplinesApp() {
   // Results
   const [toplines, setToplines] = useState(null);     // { [q]: { 'Total': [{val,pct,w}], 'Gender: Male': [...] , ... } }
   const [summaries, setSummaries] = useState(null);   // { [q]: "summary text" }
+
+  // Per-question chosen group for the chart
+  const [activeGroups, setActiveGroups] = useState({}); // { [q]: "Group Name" }
+  const setActiveGroupForQ = (q, g) => setActiveGroups((prev) => ({ ...prev, [q]: g }));
 
   // Logo reset (same behavior as your App.jsx)
   function softReset() { try { localStorage.removeItem("app_version"); } catch {} window.location.reload(); }
@@ -651,13 +745,17 @@ export default function ToplinesApp() {
               </div>
             )}
 
-            {/* ======= Selectors (now neat, searchable checklists) ======= */}
+            {/* ======= Selectors ======= */}
             {csvData?.length > 0 && (
               <div style={{ marginTop: 12 }}>
                 {/* Weight */}
                 <div className="form-group">
                   <label>Weight Column (optional)</label>
-                  <select value={weightCol} onChange={(e) => setWeightCol(e.target.value)}>
+                  <select
+                    value={weightCol}
+                    onChange={(e) => setWeightCol(e.target.value)}
+                    style={{ width: 260, padding: "6px 8px", borderRadius: 6 }}  // match model dropdown
+                  >
                     <option value="">(none)</option>
                     {headers.map((h) => (
                       <option key={h} value={h}>{h}</option>
@@ -665,7 +763,7 @@ export default function ToplinesApp() {
                   </select>
                 </div>
 
-                {/* Demos (new neat checklist) */}
+                {/* Demos */}
                 <MultiCheckList
                   title="Demographic Breakouts"
                   items={headers}
@@ -674,7 +772,7 @@ export default function ToplinesApp() {
                   placeholder="Filter demographics…"
                 />
 
-                {/* Questions (new neat checklist; detected Qs are prioritized) */}
+                {/* Questions */}
                 <MultiCheckList
                   title="Survey Questions (columns)"
                   items={questionCandidates}
@@ -686,9 +784,20 @@ export default function ToplinesApp() {
                 {/* Style */}
                 <div className="form-group">
                   <label>Summary Style</label>
-                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", gap: 32, flexWrap: "wrap" }}>
                     {Object.keys(STYLE_PROMPTS).map((k) => (
-                      <label key={k} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <label
+                        key={k}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          padding: "4px 12px",
+                          borderRadius: 6,
+                          cursor: "pointer",
+                          whiteSpace: "nowrap"
+                        }}
+                      >
                         <input type="radio" name="style" value={k} checked={styleChoice === k} onChange={(e) => setStyleChoice(e.target.value)} />
                         <span>{k}</span>
                       </label>
@@ -725,8 +834,21 @@ export default function ToplinesApp() {
           {toplines && (
             <div className="card">
               <h2>Overview</h2>
-              {/* (Charts and summaries rendering continue below; keep your existing code here) */}
-              {/* ... existing KPI/Charts/Summaries UI ... */}
+
+              {Object.entries(toplines).map(([q, groups]) => (
+                <QuestionBlock
+                  key={q}
+                  q={q}
+                  groups={groups}
+                  summaries={summaries}
+                  selectedGroup={activeGroups[q] || "Total"}
+                  onChangeGroup={setActiveGroupForQ}
+                />
+              ))}
+
+              {Object.keys(toplines).length === 0 && (
+                <div style={{ color: "#718096" }}>No data to display.</div>
+              )}
             </div>
           )}
         </main>

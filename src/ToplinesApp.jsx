@@ -791,7 +791,7 @@ export default function ToplinesApp() {
                         style={{
                           display: "flex",
                           alignItems: "center",
-                          gap: 6,
+                          gap: 7,
                           padding: "4px 12px",
                           borderRadius: 6,
                           cursor: "pointer",

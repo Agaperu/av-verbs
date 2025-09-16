@@ -700,7 +700,35 @@ Instructions:
                 </label> */}
               </div>
             </div>
+            {/* Analysis Prompt (editable, with reset) */}
+            <div className="form-group">
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <label>Analysis Prompt</label>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={resetPromptToDefault}
+                  style={{ padding: '0.4rem 0.75rem', fontSize: '0.9rem' }}
+                  title="Reset to the original default prompt"
+                >
+                  Reset to Default
+                </button>
+              </div>
 
+              <textarea
+                value={analysisPrompt}
+                onChange={(e) => setAnalysisPrompt(e.target.value)}
+                rows={6}
+                style={{ fontFamily: 'monospace', fontSize: '0.875rem', width: '100%' }}
+              />
+
+              <div style={{ fontSize: '0.8rem', color: '#718096', marginTop: 6 }}>
+                Tip: Keep this concise to reduce tokens; changes are saved automatically.
+              </div>
+            </div>
+
+
+            <div className="form-group"></div>
             <div className="actions" style={{ marginTop: 12 }}>
               <button className="btn" onClick={analyzeData} disabled={isLoading}>
                 {isLoading ? (<><div className="spinner"></div>Analyzing…</>) : (<>Analyze</>)}

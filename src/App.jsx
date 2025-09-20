@@ -1,4 +1,4 @@
-// App.jsx — adds selective “Edit & Reassign Themes” without changing existing UX
+// App.jsx — adds selective “Edit & Reassign Themes” with robust merge/split ops + fixed file upload
 import React, { useState, useRef, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import Papa from 'papaparse';
@@ -9,7 +9,7 @@ import logoGif from './assets/av-logo-gif-no_background.gif';
 
 /* ===================== Python-style constants & helpers ===================== */
 
-// Match Python’s big cap (be mindful of your model/rate limits) – from your current file
+// Match Python’s big cap (be mindful of your model/rate limits)
 const MAX_INPUT_CHARS = 120000;
 
 // Simple backoff for 429 / 5xx (honors Retry-After)
@@ -237,19 +237,59 @@ Instructions:
 
   const resetPromptToDefault = () => setAnalysisPrompt(defaultPrompt);
 
-  /* === NEW: Editable Edit Prompt (persisted) === */
-  const defaultEditPrompt = `You will revise ONLY the selected themes. Keep all other themes unchanged.
-Follow the analyst’s request exactly. Adjust theme boundaries and ParticipantID assignments ONLY for the selected themes, ensuring each ParticipantID remains assigned to at least one theme for this question.
-Return ONLY JSON as an array of patches of the form:
-[
-  {
-    "index": <number>,  // index of the theme to replace (0-based)
-    "ThemeLabel": "…",
-    "Definition": "…",
-    "RepresentativeKeywords": ["…"],
-    "ParticipantID": ["…"]
-  }
-]`;
+  /* === NEW: Editable Edit Prompt (persisted) — supports ops: merge/split/replace/delete/insert === */
+  const defaultEditPrompt = `You will revise ONLY the selected themes. Keep all other themes unchanged unless the operation (merge/split/delete) demands structural changes.
+
+ALLOWED OPERATIONS (return an array of JSON objects, each with an "op"):
+
+1) MERGE
+{
+  "op": "merge",
+  "indices": [i, j, ...],
+  "ThemeLabel": "…",
+  "Definition": "…",
+  "RepresentativeKeywords": ["…"],
+  "ParticipantID": ["…"],
+  "insertIndex": k
+}
+
+2) SPLIT
+{
+  "op": "split",
+  "index": i,
+  "replacements": [
+    { "ThemeLabel":"…","Definition":"…","RepresentativeKeywords":["…"],"ParticipantID":["…"] },
+    { "ThemeLabel":"…","Definition":"…","RepresentativeKeywords":["…"],"ParticipantID":["…"] }
+  ],
+  "insertIndex": k
+}
+
+3) REPLACE
+{
+  "op": "replace",
+  "index": i,
+  "theme": { "ThemeLabel":"…","Definition":"…","RepresentativeKeywords":["…"],"ParticipantID":["…"] }
+}
+
+4) DELETE
+{
+  "op": "delete",
+  "indices": [i, j, ...]
+}
+
+5) INSERT
+{
+  "op": "insert",
+  "index": k,
+  "theme": { "ThemeLabel":"…","Definition":"…","RepresentativeKeywords":["…"],"ParticipantID":["…"] }
+}
+
+HARD RULES:
+- Operate ONLY on the provided "selected indices" set; do not alter other themes except when removing them via merge/split/delete explicitly listed above.
+- When MERGING, output exactly ONE merged theme that replaces ALL listed indices (do NOT return duplicates).
+- When SPLITTING, completely remove the original theme and insert the provided replacements (fully assigned IDs).
+- Always provide complete "ParticipantID" arrays for any created/replaced themes. Reassign IDs as needed so each ParticipantID remains in at least one theme for this question.
+- Return STRICTLY VALID JSON: an array of op objects only (no commentary).`;
 
   const [editPrompt, setEditPrompt] = useState(() => {
     try {
@@ -291,8 +331,9 @@ Return ONLY JSON as an array of patches of the form:
   /* ===================== File handlers ===================== */
 
   const handleFileUpload = (file) => {
-    if (!file || !file.name.endsWith('.csv')) {
-      setError('Please upload a valid CSV file.');
+    // FIX: robust CSV guard (case-insensitive, also allows text/csv)
+    if (!file || !/\.csv$/i.test(file.name)) {
+      setError('Please upload a valid CSV file (.csv).');
       return;
     }
 
@@ -554,9 +595,9 @@ Return ONLY JSON as an array of patches of the form:
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  /* ===================== NEW: Selective Edit & Reassign ===================== */
+  /* ===================== NEW: Selective Edit & Reassign (structured ops) ===================== */
 
-  // selected themes to edit per question: { [qcol]: Set<number> }
+  // selected themes to edit per question: { [qcol]: number[] }
   const [selectedEdits, setSelectedEdits] = useState({});
 
   const toggleThemeSelection = (qcol, idx) => {
@@ -579,6 +620,142 @@ Return ONLY JSON as an array of patches of the form:
     setSelectedEdits((prev) => ({ ...prev, [qcol]: [] }));
   };
 
+  // ===== NEW: Structured edit engine (merge/split/replace/delete/insert) =====
+
+  function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
+
+  // Back-compat: your old patch array format (no "op")
+  function applyLegacyPatches(arr, patches) {
+    const copy = [...arr];
+    patches.forEach((p) => {
+      const i = Number(p.index);
+      if (!Number.isFinite(i) || i < 0 || i >= copy.length) return;
+      copy[i] = {
+        ThemeLabel: p.ThemeLabel ?? copy[i]?.ThemeLabel ?? `Theme ${i + 1}`,
+        Definition: p.Definition ?? copy[i]?.Definition ?? '',
+        RepresentativeKeywords: Array.isArray(p.RepresentativeKeywords) ? p.RepresentativeKeywords : (copy[i]?.RepresentativeKeywords || []),
+        ParticipantID: Array.isArray(p.ParticipantID) ? p.ParticipantID.map(String) : (copy[i]?.ParticipantID || [])
+      };
+    });
+    return copy;
+  }
+
+  function applyStructuredEdits(original, edits) {
+    let arr = [...original];
+    if (!Array.isArray(edits) || edits.length === 0) return arr;
+
+    // If edits look like legacy patches (no "op"), handle with legacy path
+    const looksLegacy = edits.every(e => typeof e === 'object' && !('op' in e));
+    if (looksLegacy) return applyLegacyPatches(arr, edits);
+
+    // Defensive copy for op list
+    const ops = edits.map(e => ({ ...e }));
+
+    // Helper to build a theme object safely
+    const normalizeTheme = (t, fallbackLabel = 'Theme') => ({
+      ThemeLabel: t?.ThemeLabel ?? fallbackLabel,
+      Definition: t?.Definition ?? '',
+      RepresentativeKeywords: Array.isArray(t?.RepresentativeKeywords) ? t.RepresentativeKeywords : [],
+      ParticipantID: Array.isArray(t?.ParticipantID) ? t.ParticipantID.map(String) : []
+    });
+
+    // Execute in deterministic phases to avoid index-shift headaches.
+    // 1) MERGE & SPLIT
+    ops.filter(o => o.op === 'merge' || o.op === 'split').forEach(op => {
+      if (op.op === 'merge') {
+        const indices = Array.isArray(op.indices) ? Array.from(new Set(op.indices)).sort((a,b)=>a-b) : [];
+        if (indices.length === 0) return;
+
+        const insertIndex = Number.isFinite(op.insertIndex) ? clamp(op.insertIndex, 0, arr.length) : indices[0];
+        const merged = normalizeTheme(op, 'Merged Theme');
+
+        // Remove originals (highest→lowest)
+        for (let k = indices.length - 1; k >= 0; k--) {
+          const idx = indices[k];
+          if (idx >= 0 && idx < arr.length) arr.splice(idx, 1);
+        }
+        // Insert merged theme at desired index
+        const ii = clamp(insertIndex, 0, arr.length);
+        arr.splice(ii, 0, {
+          ThemeLabel: merged.ThemeLabel,
+          Definition: merged.Definition,
+          RepresentativeKeywords: merged.RepresentativeKeywords,
+          ParticipantID: merged.ParticipantID
+        });
+      }
+
+      if (op.op === 'split') {
+        const idx = Number(op.index);
+        if (!Number.isFinite(idx) || idx < 0 || idx >= arr.length) return;
+
+        const replacements = Array.isArray(op.replacements) ? op.replacements.map((t, j) => normalizeTheme(t, `Split ${j+1}`)) : [];
+        if (replacements.length === 0) return;
+
+        // Remove the original
+        arr.splice(idx, 1);
+
+        // Insert replacements at insertIndex (default to original position)
+        const insertIndex = Number.isFinite(op.insertIndex) ? clamp(op.insertIndex, 0, arr.length) : idx;
+        const toInsert = replacements.map(r => ({
+          ThemeLabel: r.ThemeLabel,
+          Definition: r.Definition,
+          RepresentativeKeywords: r.RepresentativeKeywords,
+          ParticipantID: r.ParticipantID
+        }));
+        arr.splice(insertIndex, 0, ...toInsert);
+      }
+    });
+
+    // 2) DELETE
+    ops.filter(o => o.op === 'delete').forEach(op => {
+      const indices = Array.isArray(op.indices) ? Array.from(new Set(op.indices)).sort((a,b)=>b-a) : [];
+      indices.forEach(i => {
+        if (i >= 0 && i < arr.length) arr.splice(i, 1);
+      });
+    });
+
+    // 3) REPLACE
+    ops.filter(o => o.op === 'replace').forEach(op => {
+      const i = Number(op.index);
+      if (!Number.isFinite(i) || i < 0 || i >= arr.length) return;
+      const t = normalizeTheme(op.theme, `Theme ${i+1}`);
+      arr[i] = {
+        ThemeLabel: t.ThemeLabel,
+        Definition: t.Definition,
+        RepresentativeKeywords: t.RepresentativeKeywords,
+        ParticipantID: t.ParticipantID
+      };
+    });
+
+    // 4) INSERT
+    ops.filter(o => o.op === 'insert').forEach(op => {
+      const i = Number(op.index);
+      if (!Number.isFinite(i)) return;
+      const idx = clamp(i, 0, arr.length);
+      const t = normalizeTheme(op.theme, `Theme ${idx+1}`);
+      arr.splice(idx, 0, {
+        ThemeLabel: t.ThemeLabel,
+        Definition: t.Definition,
+        RepresentativeKeywords: t.RepresentativeKeywords,
+        ParticipantID: t.ParticipantID
+      });
+    });
+
+    return arr;
+  }
+
+  // Wrapper that updates state for a given question column
+  const applyEditPatches = (qcol, patchesOrOps) => {
+    setResults((prev) => {
+      const next = { ...prev };
+      const arr = Array.isArray(next[qcol]) ? [...next[qcol]] : [];
+      const updated = applyStructuredEdits(arr, patchesOrOps);
+      next[qcol] = updated;
+      return next;
+    });
+  };
+
+  // ===== Model call for structured edits =====
   async function llmEditThemes({ qcol, selectedIdx, model, idCol, headers }) {
     // safety checks
     const themesArr = Array.isArray(results?.[qcol]) ? results[qcol] : null;
@@ -592,11 +769,41 @@ Return ONLY JSON as an array of patches of the form:
     const currentThemesJson = JSON.stringify(themesArr, null, 2);
     const allowedIndices = JSON.stringify(selectedIdx);
 
-    const userInstruction = `\nQUESTION COLUMN: ${qcol}\n\nCURRENT THEMES (JSON):\n${currentThemesJson}\n\nYOU MAY MODIFY ONLY THESE THEME INDICES (0-based): ${allowedIndices}.\n\nANALYST REQUEST:\n${editPrompt}\n\nHARD RULES:\n- Do not introduce or remove themes beyond the selected indices; you must replace each selected theme with exactly one revised theme.\n- Keep non-selected themes exactly as-is.\n- When reassigning ParticipantID, use the records from RESPONSES below. Maintain valid IDs and keep each ID in at least one theme.\n- Output strictly valid JSON as an array of patches of the form: [{\"index\": number, \"ThemeLabel\": string, \"Definition\": string, \"RepresentativeKeywords\": [string], \"ParticipantID\": [string]}].\n\nRESPONSES (one per line):\n${responsesPayload}`;
+    const schemaAndRules = `
+You will return ONLY JSON (no prose).
+SCHEMA: an array of operation objects, each with an "op" field, following this spec:
+
+- MERGE: {"op":"merge","indices":[...],"ThemeLabel":"…","Definition":"…","RepresentativeKeywords":["…"],"ParticipantID":["…"],"insertIndex":<optional>}
+- SPLIT: {"op":"split","index":i,"replacements":[{theme},{theme},...],"insertIndex":<optional>}
+- REPLACE: {"op":"replace","index":i,"theme":{…}}
+- DELETE: {"op":"delete","indices":[...]}
+- INSERT: {"op":"insert","index":k,"theme":{…}}
+
+HARD RULES:
+- Allowed indices (0-based): ${allowedIndices}. Do not modify other indices unless the operation necessarily removes them (merge/split/delete).
+- MERGE must output exactly one merged theme for all merged indices and remove the originals.
+- SPLIT must remove the original index and insert the replacement themes with full ID assignment.
+- For any theme you create or replace, provide complete "ParticipantID" lists (reassign as needed).
+- Ensure each ID remains assigned to at least one theme for this question.
+- Return strictly valid JSON (array of operation objects only).`;
 
     const messages = [
       { role: 'system', content: 'You are a precise, compliance-focused data analyst. Output strictly valid JSON with no commentary.' },
-      { role: 'user', content: userInstruction }
+      { role: 'user', content:
+        `QUESTION COLUMN: ${qcol}
+CURRENT THEMES (JSON):
+${currentThemesJson}
+
+ALLOWED TO EDIT (0-based indices): ${allowedIndices}
+
+ANALYST REQUEST:
+${editPrompt}
+
+${schemaAndRules}
+
+RESPONSES (one per line):
+${responsesPayload}`
+      }
     ];
 
     const body = { model, messages };
@@ -604,26 +811,6 @@ Return ONLY JSON as an array of patches of the form:
     const content = resp.data?.choices?.[0]?.message?.content ?? '[]';
     return content;
   }
-
-  const applyEditPatches = (qcol, patches) => {
-    setResults((prev) => {
-      const next = { ...prev };
-      const arr = Array.isArray(next[qcol]) ? [...next[qcol]] : [];
-      patches.forEach((p) => {
-        const i = Number(p.index);
-        if (!Number.isFinite(i) || i < 0 || i >= arr.length) return;
-        const replacement = {
-          ThemeLabel: p.ThemeLabel ?? arr[i]?.ThemeLabel ?? `Theme ${i + 1}`,
-          Definition: p.Definition ?? arr[i]?.Definition ?? '',
-          RepresentativeKeywords: Array.isArray(p.RepresentativeKeywords) ? p.RepresentativeKeywords : (arr[i]?.RepresentativeKeywords || []),
-          ParticipantID: Array.isArray(p.ParticipantID) ? p.ParticipantID : (arr[i]?.ParticipantID || [])
-        };
-        arr[i] = replacement;
-      });
-      next[qcol] = arr;
-      return next;
-    });
-  };
 
   const onEditSelectedForQuestion = async (qcol) => {
     if (!apiKey.trim()) { setError('Please enter your OpenAI API key.'); return; }
@@ -650,13 +837,13 @@ Return ONLY JSON as an array of patches of the form:
 
       const content = await llmEditThemes({ qcol, selectedIdx, model, idCol: resolvedIdCol, headers });
 
-      let patches = [];
-      try { patches = parseJsonMaybe(content); } catch { throw new Error('The model did not return valid JSON for edit patches.'); }
-      if (!Array.isArray(patches)) throw new Error('Edit patches must be a JSON array.');
+      let ops = [];
+      try { ops = parseJsonMaybe(content); } catch { throw new Error('The model did not return valid JSON for structured edits.'); }
+      if (!Array.isArray(ops)) throw new Error('Edits must be a JSON array.');
 
       // apply
-      applyEditPatches(qcol, patches);
-      setSuccess(`Applied ${patches.length} edit patch(es) to ${qcol}.`);
+      applyEditPatches(qcol, ops);
+      setSuccess(`Applied ${ops.length} edit operation(s) to ${qcol}.`);
     } catch (err) {
       console.error(err);
       const msg = err?.response?.data?.error?.message || err.message || String(err);
@@ -736,10 +923,11 @@ Return ONLY JSON as an array of patches of the form:
                   {fileName || 'No file selected'}
                 </p>
               </div>
+              {/* FIX: proper handler + accept types */}
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".csv"
+                accept=".csv,text/csv"
                 onChange={handleFileInputChange}
                 style={{ display: 'none' }}
               />
@@ -873,7 +1061,7 @@ Return ONLY JSON as an array of patches of the form:
               </div>
             </div>
 
-            {/* (Edit Prompt REMOVED from here) */}
+            {/* (Edit Prompt lives in the Themes card after results) */}
 
             <div className="actions" style={{ marginTop: 12 }}>
               <button className="btn" onClick={analyzeData} disabled={isLoading}>
@@ -903,7 +1091,7 @@ Return ONLY JSON as an array of patches of the form:
             <div className="card">
               <h2>Themes</h2>
 
-              {/* NEW: Edit Prompt now lives inside the Themes card and shows only when results exist */}
+              {/* Edit Prompt inside the Themes card (visible only when results exist) */}
               <div className="form-group" style={{ marginTop: 8, marginBottom: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <label>Edit Prompt (applies to selected themes below)</label>
@@ -922,7 +1110,7 @@ Return ONLY JSON as an array of patches of the form:
                   onChange={(e) => setEditPrompt(e.target.value)}
                   rows={5}
                   style={{ fontFamily: 'monospace', fontSize: '0.875rem', width: '100%' }}
-                  placeholder="Describe exactly how to revise the selected themes (e.g., merge 0 & 1; split 2 into affordability vs. availability; move tax-related IDs into 'Taxes')."
+                  placeholder="Describe edits, e.g.: merge 0 & 1 into 'Affordability & Cost'; split 2 into 'Availability' and 'Quality' with proper ID reassignment."
                 />
               </div>
 
@@ -988,7 +1176,7 @@ Return ONLY JSON as an array of patches of the form:
                                 <div style={{ flex: 1 }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                     <strong>{t.ThemeLabel || `Theme ${i + 1}`}</strong>
-                                    {/* NEW: Coverage badge */}
+                                    {/* Coverage badge */}
                                     <span
                                       title={`Coverage of respondent universe for ${qcol}`}
                                       style={{

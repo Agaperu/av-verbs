@@ -199,17 +199,6 @@ function App() {
   const [fileName, setFileName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [results, setResults] = useState(null);
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('AV_VERBATIMS_RESULTS_V1');
-      if (saved) setResults(JSON.parse(saved));
-    } catch {}
-  }, []);
-  useEffect(() => {
-    try {
-      if (results) localStorage.setItem('AV_VERBATIMS_RESULTS_V1', JSON.stringify(results));
-    } catch {}
-  }, [results]);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isDragging, setIsDragging] = useState(false);
@@ -609,7 +598,6 @@ HARD RULES:
     setCsvData(null);
     setFileName('');
     setResults(null);
-    try { localStorage.removeItem('AV_VERBATIMS_RESULTS_V1'); } catch {}
     setError('');
     setSuccess('');
     if (fileInputRef.current) fileInputRef.current.value = '';

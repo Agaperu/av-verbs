@@ -1,4 +1,4 @@
-// App.jsx
+// App.jsx — adds selective “Edit & Reassign Themes” without changing existing UX
 import React, { useState, useRef, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import Papa from 'papaparse';
@@ -147,6 +147,20 @@ function parseJsonMaybe(text) {
   throw new Error('JSON parse failed');
 }
 
+/* ===== NEW: compute question-level respondent universe (for % coverage) ===== */
+function computeQuestionUniverse(rows, idCol, qcol, skipBlanks = true) {
+  const set = new Set();
+  if (!Array.isArray(rows) || rows.length === 0) return set;
+  for (let i = 0; i < rows.length; i++) {
+    const rid = String(rows[i]?.[idCol] ?? (i + 1));
+    const raw = rows[i]?.[qcol];
+    const txt = String(raw ?? '').replace(/\n/g, ' ').trim();
+    const include = skipBlanks ? isMeaningful(txt) : !!txt;
+    if (include) set.add(rid);
+  }
+  return set;
+}
+
 /* ===================== Small Tabs component for the config card ===================== */
 
 function ConfigTabs() {
@@ -223,8 +237,36 @@ Instructions:
 
   const resetPromptToDefault = () => setAnalysisPrompt(defaultPrompt);
 
+  /* === NEW: Editable Edit Prompt (persisted) === */
+  const defaultEditPrompt = `You will revise ONLY the selected themes. Keep all other themes unchanged.
+Follow the analyst’s request exactly. Adjust theme boundaries and ParticipantID assignments ONLY for the selected themes, ensuring each ParticipantID remains assigned to at least one theme for this question.
+Return ONLY JSON as an array of patches of the form:
+[
+  {
+    "index": <number>,  // index of the theme to replace (0-based)
+    "ThemeLabel": "…",
+    "Definition": "…",
+    "RepresentativeKeywords": ["…"],
+    "ParticipantID": ["…"]
+  }
+]`;
+
+  const [editPrompt, setEditPrompt] = useState(() => {
+    try {
+      return localStorage.getItem('editPrompt') || defaultEditPrompt;
+    } catch {
+      return defaultEditPrompt;
+    }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem('editPrompt', editPrompt); } catch {}
+  }, [editPrompt]);
+
+  const resetEditPrompt = () => setEditPrompt(defaultEditPrompt);
+
   /* === Logo reset handlers (logo acts as reset button) === */
-  const SOFT_RESET_KEYS = ['analysisPrompt', 'app_version'];
+  const SOFT_RESET_KEYS = ['analysisPrompt', 'editPrompt', 'app_version'];
 
   function softReset() {
     try {
@@ -512,6 +554,118 @@ Instructions:
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  /* ===================== NEW: Selective Edit & Reassign ===================== */
+
+  // selected themes to edit per question: { [qcol]: Set<number> }
+  const [selectedEdits, setSelectedEdits] = useState({});
+
+  const toggleThemeSelection = (qcol, idx) => {
+    setSelectedEdits((prev) => {
+      const next = { ...prev };
+      const set = new Set(next[qcol] || []);
+      if (set.has(idx)) set.delete(idx); else set.add(idx);
+      next[qcol] = Array.from(set);
+      return next;
+    });
+  };
+
+  const selectAllThemesForQuestion = (qcol) => {
+    if (!Array.isArray(results?.[qcol])) return;
+    const allIdx = results[qcol].map((_, i) => i);
+    setSelectedEdits((prev) => ({ ...prev, [qcol]: allIdx }));
+  };
+
+  const clearSelectionsForQuestion = (qcol) => {
+    setSelectedEdits((prev) => ({ ...prev, [qcol]: [] }));
+  };
+
+  async function llmEditThemes({ qcol, selectedIdx, model, idCol, headers }) {
+    // safety checks
+    const themesArr = Array.isArray(results?.[qcol]) ? results[qcol] : null;
+    if (!themesArr) throw new Error('No themes available to edit for the selected question.');
+    if (!selectedIdx?.length) throw new Error('No themes selected to edit.');
+
+    // build payload of raw responses for this question (needed to re-evaluate assignments)
+    const responsesPayload = buildPayloadForColumn(csvData, idCol, qcol, MAX_INPUT_CHARS, true);
+
+    // Provide current themes and which indices can change
+    const currentThemesJson = JSON.stringify(themesArr, null, 2);
+    const allowedIndices = JSON.stringify(selectedIdx);
+
+    const userInstruction = `\nQUESTION COLUMN: ${qcol}\n\nCURRENT THEMES (JSON):\n${currentThemesJson}\n\nYOU MAY MODIFY ONLY THESE THEME INDICES (0-based): ${allowedIndices}.\n\nANALYST REQUEST:\n${editPrompt}\n\nHARD RULES:\n- Do not introduce or remove themes beyond the selected indices; you must replace each selected theme with exactly one revised theme.\n- Keep non-selected themes exactly as-is.\n- When reassigning ParticipantID, use the records from RESPONSES below. Maintain valid IDs and keep each ID in at least one theme.\n- Output strictly valid JSON as an array of patches of the form: [{\"index\": number, \"ThemeLabel\": string, \"Definition\": string, \"RepresentativeKeywords\": [string], \"ParticipantID\": [string]}].\n\nRESPONSES (one per line):\n${responsesPayload}`;
+
+    const messages = [
+      { role: 'system', content: 'You are a precise, compliance-focused data analyst. Output strictly valid JSON with no commentary.' },
+      { role: 'user', content: userInstruction }
+    ];
+
+    const body = { model, messages };
+    const resp = await postChatWithBackoff('https://api.openai.com/v1/chat/completions', body, headers);
+    const content = resp.data?.choices?.[0]?.message?.content ?? '[]';
+    return content;
+  }
+
+  const applyEditPatches = (qcol, patches) => {
+    setResults((prev) => {
+      const next = { ...prev };
+      const arr = Array.isArray(next[qcol]) ? [...next[qcol]] : [];
+      patches.forEach((p) => {
+        const i = Number(p.index);
+        if (!Number.isFinite(i) || i < 0 || i >= arr.length) return;
+        const replacement = {
+          ThemeLabel: p.ThemeLabel ?? arr[i]?.ThemeLabel ?? `Theme ${i + 1}`,
+          Definition: p.Definition ?? arr[i]?.Definition ?? '',
+          RepresentativeKeywords: Array.isArray(p.RepresentativeKeywords) ? p.RepresentativeKeywords : (arr[i]?.RepresentativeKeywords || []),
+          ParticipantID: Array.isArray(p.ParticipantID) ? p.ParticipantID : (arr[i]?.ParticipantID || [])
+        };
+        arr[i] = replacement;
+      });
+      next[qcol] = arr;
+      return next;
+    });
+  };
+
+  const onEditSelectedForQuestion = async (qcol) => {
+    if (!apiKey.trim()) { setError('Please enter your OpenAI API key.'); return; }
+    if (!csvData || csvData.length === 0) { setError('Please upload a CSV file first.'); return; }
+
+    const themesArr = Array.isArray(results?.[qcol]) ? results[qcol] : null;
+    if (!themesArr) { setError('No themes available to edit for the selected question.'); return; }
+
+    const selectedIdx = (selectedEdits[qcol] || []).slice().sort((a,b)=>a-b);
+    if (!selectedIdx.length) { setError('Select at least one theme to edit.'); return; }
+
+    setIsLoading(true); setError(''); setSuccess('');
+    try {
+      // Resolve ID column reliably
+      let resolvedIdCol = resolveIdColumn(csvData, idColumn || 'respid');
+      if (!csvData[0] || !(resolvedIdCol in csvData[0])) {
+        const autoId = detectIdColumn(csvData);
+        if (autoId && autoId in csvData[0]) { resolvedIdCol = autoId; setIdColumn(autoId); }
+        else throw new Error('ID column could not be resolved for editing.');
+      }
+
+      const headers = { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+      const model = modelName;
+
+      const content = await llmEditThemes({ qcol, selectedIdx, model, idCol: resolvedIdCol, headers });
+
+      let patches = [];
+      try { patches = parseJsonMaybe(content); } catch { throw new Error('The model did not return valid JSON for edit patches.'); }
+      if (!Array.isArray(patches)) throw new Error('Edit patches must be a JSON array.');
+
+      // apply
+      applyEditPatches(qcol, patches);
+      setSuccess(`Applied ${patches.length} edit patch(es) to ${qcol}.`);
+    } catch (err) {
+      console.error(err);
+      const msg = err?.response?.data?.error?.message || err.message || String(err);
+      setError(`Edit failed: ${msg}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   /* ===================== UI ===================== */
 
   return (
@@ -689,17 +843,9 @@ Instructions:
                   onChange={(e) => setQuestionId(e.target.value)}
                   placeholder="e.g., q24"
                 />
-                {/* <label htmlFor="skipBlanks" className="qfilter-inline">
-                  <input
-                    id="skipBlanks"
-                    type="checkbox"
-                    checked={skipBlankCells}
-                    onChange={(e) => setSkipBlankCells(e.target.checked)}
-                  />
-                  <span>Skip blank / N-A responses before analysis</span>
-                </label> */}
               </div>
             </div>
+
             {/* Analysis Prompt (editable, with reset) */}
             <div className="form-group">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -727,8 +873,8 @@ Instructions:
               </div>
             </div>
 
+            {/* (Edit Prompt REMOVED from here) */}
 
-            <div className="form-group"></div>
             <div className="actions" style={{ marginTop: 12 }}>
               <button className="btn" onClick={analyzeData} disabled={isLoading}>
                 {isLoading ? (<><div className="spinner"></div>Analyzing…</>) : (<>Analyze</>)}
@@ -756,34 +902,131 @@ Instructions:
           {results && (
             <div className="card">
               <h2>Themes</h2>
+
+              {/* NEW: Edit Prompt now lives inside the Themes card and shows only when results exist */}
+              <div className="form-group" style={{ marginTop: 8, marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label>Edit Prompt (applies to selected themes below)</label>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={resetEditPrompt}
+                    style={{ padding: '0.4rem 0.75rem', fontSize: '0.9rem' }}
+                    title="Reset to the default edit prompt"
+                  >
+                    Reset Edit Prompt
+                  </button>
+                </div>
+                <textarea
+                  value={editPrompt}
+                  onChange={(e) => setEditPrompt(e.target.value)}
+                  rows={5}
+                  style={{ fontFamily: 'monospace', fontSize: '0.875rem', width: '100%' }}
+                  placeholder="Describe exactly how to revise the selected themes (e.g., merge 0 & 1; split 2 into affordability vs. availability; move tax-related IDs into 'Taxes')."
+                />
+              </div>
+
               <div className="results">
-                {Object.entries(results).map(([qcol, themes]) => (
-                  <div key={qcol} className="theme-item">
-                    <h3>{qcol}</h3>
-                    {Array.isArray(themes) ? (
-                      themes.map((t, i) => (
-                        <div key={i} style={{ marginBottom: 12 }}>
-                          <strong>{t.ThemeLabel || `Theme ${i + 1}`}</strong>
-                          {t.Definition && <p>{t.Definition}</p>}
-                          {Array.isArray(t.RepresentativeKeywords) && t.RepresentativeKeywords.length > 0 && (
-                            <div className="keywords">
-                              {t.RepresentativeKeywords.map((k, j) => (
-                                <span className="keyword" key={j}>{k}</span>
-                              ))}
-                            </div>
-                          )}
-                          {t.ParticipantID && (
-                            <div className="participants">
-                              IDs: {Array.isArray(t.ParticipantID) ? t.ParticipantID.join(', ') : String(t.ParticipantID)}
-                            </div>
-                          )}
+                {Object.entries(results).map(([qcol, themes]) => {
+                  // ---- Percent coverage denominator for this question ----
+                  const resolvedIdCol = resolveIdColumn(csvData, idColumn) || 'respid';
+
+                  // Universe = all unique IDs with a meaningful response to this question
+                  const universe = computeQuestionUniverse(csvData, resolvedIdCol, qcol, skipBlankCells);
+
+                  // Fallback: if universe is empty, use union of IDs across themes
+                  const unionAssigned = new Set();
+                  if (Array.isArray(themes)) {
+                    themes.forEach((t) => {
+                      const arr = Array.isArray(t?.ParticipantID) ? t.ParticipantID : (t?.ParticipantID != null ? [t.ParticipantID] : []);
+                      arr.forEach((id) => id != null && String(id) !== '' && unionAssigned.add(String(id)));
+                    });
+                  }
+                  const denom = universe.size > 0 ? universe.size : unionAssigned.size;
+                  const safeDenom = denom > 0 ? denom : 1; // avoid divide-by-zero; shows 0/1 → 0%
+
+                  return (
+                    <div key={qcol} className="theme-item" style={{ borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: 12, marginBottom: 16 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <h3 style={{ marginRight: 12 }}>{qcol}</h3>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button className="btn btn-secondary" onClick={() => selectAllThemesForQuestion(qcol)} disabled={!Array.isArray(themes)}>
+                            Select all
+                          </button>
+                          <button className="btn btn-secondary" onClick={() => clearSelectionsForQuestion(qcol)}>
+                            Clear selection
+                          </button>
+                          <button
+                            className="btn"
+                            onClick={() => onEditSelectedForQuestion(qcol)}
+                            disabled={isLoading || !(selectedEdits[qcol]?.length)}
+                            title="Reevaluate only the selected themes for this question"
+                          >
+                            {isLoading ? 'Working…' : 'Reevaluate selected themes'}
+                          </button>
                         </div>
-                      ))
-                    ) : (
-                      <pre style={{ whiteSpace: 'pre-wrap' }}>{typeof themes === 'object' ? JSON.stringify(themes, null, 2) : String(themes)}</pre>
-                    )}
-                  </div>
-                ))}
+                      </div>
+
+                      {Array.isArray(themes) ? (
+                        themes.map((t, i) => {
+                          const idsArr = Array.isArray(t.ParticipantID)
+                            ? t.ParticipantID
+                            : (t.ParticipantID != null ? [t.ParticipantID] : []);
+                          const themeCount = new Set(idsArr.map((v) => String(v))).size;
+                          const pct = Math.round((themeCount / safeDenom) * 1000) / 10; // one decimal
+
+                          return (
+                            <div key={i} style={{ marginBottom: 12, padding: '8px 10px', borderRadius: 8, background: '#f9fafb' }}>
+                              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={(selectedEdits[qcol] || []).includes(i)}
+                                  onChange={() => toggleThemeSelection(qcol, i)}
+                                  aria-label={`Select theme ${i+1} for editing`}
+                                  style={{ marginTop: 4 }}
+                                />
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                    <strong>{t.ThemeLabel || `Theme ${i + 1}`}</strong>
+                                    {/* NEW: Coverage badge */}
+                                    <span
+                                      title={`Coverage of respondent universe for ${qcol}`}
+                                      style={{
+                                        fontSize: '0.75rem',
+                                        padding: '2px 6px',
+                                        borderRadius: 999,
+                                        background: '#edf2f7',
+                                        border: '1px solid rgba(0,0,0,0.08)'
+                                      }}
+                                    >
+                                      {pct}% ({themeCount}/{denom})
+                                    </span>
+                                  </div>
+
+                                  {t.Definition && <p style={{ marginTop: 4 }}>{t.Definition}</p>}
+                                  {Array.isArray(t.RepresentativeKeywords) && t.RepresentativeKeywords.length > 0 && (
+                                    <div className="keywords" style={{ marginTop: 4 }}>
+                                      {t.RepresentativeKeywords.map((k, j) => (
+                                        <span className="keyword" key={j}>{k}</span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {idsArr.length > 0 && (
+                                    <div className="participants" style={{ marginTop: 4 }}>
+                                      IDs: {idsArr.join(', ')}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <pre style={{ whiteSpace: 'pre-wrap' }}>{typeof themes === 'object' ? JSON.stringify(themes, null, 2) : String(themes)}</pre>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

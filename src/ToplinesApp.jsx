@@ -451,7 +451,16 @@ function QuestionBlock({ q, groups, summaries, selectedGroup, onChangeGroup }) {
 
 export default function ToplinesApp() {
   // Left column state (API + CSV)
-  const [apiKey, setApiKey] = useState("");
+  const [apiKey, setApiKey] = useState(() => {
+    try { return localStorage.getItem('AV_API_KEY') || ""; } catch { return ""; }
+  });
+  useEffect(() => {
+    try {
+      if (apiKey) localStorage.setItem('AV_API_KEY', apiKey);
+      else localStorage.removeItem('AV_API_KEY');
+    } catch {}
+  }, [apiKey]);
+
   const [csvData, setCsvData] = useState(null);
   const [fileName, setFileName] = useState("");
   const fileInputRef = useRef(null);
@@ -473,6 +482,25 @@ export default function ToplinesApp() {
   // Results
   const [toplines, setToplines] = useState(null);     // { [q]: { 'Total': [{val,pct,w}], 'Gender: Male': [...] , ... } }
   const [summaries, setSummaries] = useState(null);   // { [q]: "summary text" }
+  useEffect(() => {
+    try {
+      const t = localStorage.getItem('AV_TOPLINES_V1');
+      const s = localStorage.getItem('AV_SUMMARIES_V1');
+      if (t) setToplines(JSON.parse(t));
+      if (s) setSummaries(JSON.parse(s));
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      if (toplines) localStorage.setItem('AV_TOPLINES_V1', JSON.stringify(toplines));
+    } catch {}
+  }, [toplines]);
+  useEffect(() => {
+    try {
+      if (summaries) localStorage.setItem('AV_SUMMARIES_V1', JSON.stringify(summaries));
+    } catch {}
+  }, [summaries]);
+
 
   // Per-question chosen group for the chart
   const [activeGroups, setActiveGroups] = useState({}); // { [q]: "Group Name" }
@@ -711,7 +739,9 @@ export default function ToplinesApp() {
                   <button className="btn btn-secondary" onClick={() => setShowPreview(!showPreview)} style={{ marginRight: "0.5rem" }}>
                     {showPreview ? "Hide" : "Show"} Preview
                   </button>
-                  <button className="btn btn-secondary" onClick={() => { setCsvData(null); setFileName(""); setToplines(null); setSummaries(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}>
+                  <button className="btn btn-secondary" onClick={() => { setCsvData(null); setFileName(""); setToplines(null);
+    try { localStorage.removeItem('AV_TOPLINES_V1'); } catch {} setSummaries(null);
+    try { localStorage.removeItem('AV_SUMMARIES_V1'); } catch {} if (fileInputRef.current) fileInputRef.current.value = ""; }}>
                     Clear Data
                   </button>
                 </div>

@@ -185,11 +185,31 @@ function ConfigTabs() {
 /* ===================== Component ===================== */
 
 function App() {
-  const [apiKey, setApiKey] = useState('');
+  const [apiKey, setApiKey] = useState(() => {
+    try { return localStorage.getItem('AV_API_KEY') || ''; } catch { return ''; }
+  });
+  useEffect(() => {
+    try {
+      if (apiKey) localStorage.setItem('AV_API_KEY', apiKey);
+      else localStorage.removeItem('AV_API_KEY');
+    } catch {}
+  }, [apiKey]);
+
   const [csvData, setCsvData] = useState(null);
   const [fileName, setFileName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [results, setResults] = useState(null);
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('AV_VERBATIMS_RESULTS_V1');
+      if (saved) setResults(JSON.parse(saved));
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      if (results) localStorage.setItem('AV_VERBATIMS_RESULTS_V1', JSON.stringify(results));
+    } catch {}
+  }, [results]);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isDragging, setIsDragging] = useState(false);
@@ -589,6 +609,7 @@ HARD RULES:
     setCsvData(null);
     setFileName('');
     setResults(null);
+    try { localStorage.removeItem('AV_VERBATIMS_RESULTS_V1'); } catch {}
     setError('');
     setSuccess('');
     if (fileInputRef.current) fileInputRef.current.value = '';

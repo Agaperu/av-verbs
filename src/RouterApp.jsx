@@ -2,7 +2,7 @@
 // at top of RouterApp.jsx
 import React, { Suspense, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 
 import KnowledgeBotApp from "./App";
 import ToplinesApp from "./ToplinesApp";
@@ -38,6 +38,22 @@ function LogoutButton({ onLogout }) {
 
 
 
+function AppsContainer() {
+  const loc = useLocation();
+  const showBot = loc.pathname === "/bot" || loc.pathname === "/";
+
+  return (
+    <>
+      <div style={{ display: showBot ? "block" : "none" }}>
+        <KnowledgeBotApp />
+      </div>
+      <div style={{ display: showBot ? "none" : "block" }}>
+        <ToplinesApp />
+      </div>
+    </>
+  );
+}
+
 export default function RouterApp() {
   const [authed, setAuthed] = useState(() => {
     try {
@@ -67,9 +83,9 @@ export default function RouterApp() {
         <Routes>
           {/* Default to Verbatims app */}
           <Route path="/" element={<Navigate to="/bot" replace />} />
-          <Route path="/bot" element={<KnowledgeBotApp />} />
-          <Route path="/toplines" element={<ToplinesApp />} />
-          <Route path="*" element={<div style={{ padding: 16 }}>Not found.</div>} />
+          <Route path="/bot" element={<AppsContainer />} />
+          <Route path="/toplines" element={<AppsContainer />} />
+          <Route path="*" element={<AppsContainer />} />
         </Routes>
       </Suspense>
     </BrowserRouter>

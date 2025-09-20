@@ -1,9 +1,9 @@
-// App.jsx — adds selective “Edit & Reassign Themes” with robust merge/split ops + fixed file upload
+// App.jsx — adds selective “Edit & Reassign Themes” with robust merge/split ops + fixed file upload + collapsible Edit Prompt
 import React, { useState, useRef, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import Papa from 'papaparse';
 import axios from 'axios';
-import { Upload, Download, FileText, Brain, AlertCircle, CheckCircle } from 'lucide-react';
+import { Upload, Download, FileText, AlertCircle, CheckCircle } from 'lucide-react';
 import logoUrl from './assets/av-logo3.png';
 import logoGif from './assets/av-logo-gif-no_background.gif';
 
@@ -331,7 +331,7 @@ HARD RULES:
   /* ===================== File handlers ===================== */
 
   const handleFileUpload = (file) => {
-    // FIX: robust CSV guard (case-insensitive, also allows text/csv)
+    // Robust CSV guard (case-insensitive, also allows text/csv)
     if (!file || !/\.csv$/i.test(file.name)) {
       setError('Please upload a valid CSV file (.csv).');
       return;
@@ -374,6 +374,7 @@ HARD RULES:
   /* ===================== One-shot analysis (Python-like) ===================== */
 
   async function llmThemeExtract({ columnName, model, idCol, headers }) {
+    // FIX: use state variable skipBlankCells (not "skipBlanks")
     const payload = buildPayloadForColumn(csvData, idCol, columnName, MAX_INPUT_CHARS, skipBlankCells);
     if (!payload || !payload.trim()) {
       return { ok: true, content: '[]' }; // nothing to analyze → empty array
@@ -392,7 +393,6 @@ HARD RULES:
     ];
 
     try {
-      // no temperature param at all
       const body = { model, messages };
       const resp = await postChatWithBackoff('https://api.openai.com/v1/chat/completions', body, headers);
       const content = resp.data?.choices?.[0]?.message?.content ?? '';
@@ -471,7 +471,6 @@ HARD RULES:
           continue;
         }
 
-        // Parse: keep raw on failure
         try {
           const parsed = parseJsonMaybe(r.content);
           allResults[col] = parsed;
@@ -502,7 +501,7 @@ HARD RULES:
     }
   
     try {
-      // ---------- LONG (Question, ThemeLabel, Definition, Keywords, ParticipantIDs)
+      // ---------- LONG
       const longRows = [];
       Object.entries(results).forEach(([questionCol, themes]) => {
         if (Array.isArray(themes)) {
@@ -533,7 +532,7 @@ HARD RULES:
       const longCsv = Papa.unparse(longRows);
       const longName = `themes_by_question_${new Date().toISOString().split( 'T')[0]}.csv`;
   
-      // ---------- WIDE (binary codes per theme)
+      // ---------- WIDE
       const resolvedIdCol = resolveIdColumn(csvData, idColumn) || 'user_id';
       const allIds = new Set();
       Object.values(results).forEach((themes) => {
@@ -599,6 +598,7 @@ HARD RULES:
 
   // selected themes to edit per question: { [qcol]: number[] }
   const [selectedEdits, setSelectedEdits] = useState({});
+  const [showEditPromptBox, setShowEditPromptBox] = useState(false); // collapsible state
 
   const toggleThemeSelection = (qcol, idx) => {
     setSelectedEdits((prev) => {
@@ -620,11 +620,8 @@ HARD RULES:
     setSelectedEdits((prev) => ({ ...prev, [qcol]: [] }));
   };
 
-  // ===== NEW: Structured edit engine (merge/split/replace/delete/insert) =====
-
   function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
 
-  // Back-compat: your old patch array format (no "op")
   function applyLegacyPatches(arr, patches) {
     const copy = [...arr];
     patches.forEach((p) => {
@@ -644,14 +641,11 @@ HARD RULES:
     let arr = [...original];
     if (!Array.isArray(edits) || edits.length === 0) return arr;
 
-    // If edits look like legacy patches (no "op"), handle with legacy path
     const looksLegacy = edits.every(e => typeof e === 'object' && !('op' in e));
     if (looksLegacy) return applyLegacyPatches(arr, edits);
 
-    // Defensive copy for op list
     const ops = edits.map(e => ({ ...e }));
 
-    // Helper to build a theme object safely
     const normalizeTheme = (t, fallbackLabel = 'Theme') => ({
       ThemeLabel: t?.ThemeLabel ?? fallbackLabel,
       Definition: t?.Definition ?? '',
@@ -659,7 +653,6 @@ HARD RULES:
       ParticipantID: Array.isArray(t?.ParticipantID) ? t.ParticipantID.map(String) : []
     });
 
-    // Execute in deterministic phases to avoid index-shift headaches.
     // 1) MERGE & SPLIT
     ops.filter(o => o.op === 'merge' || o.op === 'split').forEach(op => {
       if (op.op === 'merge') {
@@ -669,12 +662,10 @@ HARD RULES:
         const insertIndex = Number.isFinite(op.insertIndex) ? clamp(op.insertIndex, 0, arr.length) : indices[0];
         const merged = normalizeTheme(op, 'Merged Theme');
 
-        // Remove originals (highest→lowest)
         for (let k = indices.length - 1; k >= 0; k--) {
           const idx = indices[k];
           if (idx >= 0 && idx < arr.length) arr.splice(idx, 1);
         }
-        // Insert merged theme at desired index
         const ii = clamp(insertIndex, 0, arr.length);
         arr.splice(ii, 0, {
           ThemeLabel: merged.ThemeLabel,
@@ -691,10 +682,8 @@ HARD RULES:
         const replacements = Array.isArray(op.replacements) ? op.replacements.map((t, j) => normalizeTheme(t, `Split ${j+1}`)) : [];
         if (replacements.length === 0) return;
 
-        // Remove the original
         arr.splice(idx, 1);
 
-        // Insert replacements at insertIndex (default to original position)
         const insertIndex = Number.isFinite(op.insertIndex) ? clamp(op.insertIndex, 0, arr.length) : idx;
         const toInsert = replacements.map(r => ({
           ThemeLabel: r.ThemeLabel,
@@ -744,7 +733,6 @@ HARD RULES:
     return arr;
   }
 
-  // Wrapper that updates state for a given question column
   const applyEditPatches = (qcol, patchesOrOps) => {
     setResults((prev) => {
       const next = { ...prev };
@@ -755,17 +743,13 @@ HARD RULES:
     });
   };
 
-  // ===== Model call for structured edits =====
   async function llmEditThemes({ qcol, selectedIdx, model, idCol, headers }) {
-    // safety checks
     const themesArr = Array.isArray(results?.[qcol]) ? results[qcol] : null;
     if (!themesArr) throw new Error('No themes available to edit for the selected question.');
     if (!selectedIdx?.length) throw new Error('No themes selected to edit.');
 
-    // build payload of raw responses for this question (needed to re-evaluate assignments)
     const responsesPayload = buildPayloadForColumn(csvData, idCol, qcol, MAX_INPUT_CHARS, true);
 
-    // Provide current themes and which indices can change
     const currentThemesJson = JSON.stringify(themesArr, null, 2);
     const allowedIndices = JSON.stringify(selectedIdx);
 
@@ -824,7 +808,6 @@ ${responsesPayload}`
 
     setIsLoading(true); setError(''); setSuccess('');
     try {
-      // Resolve ID column reliably
       let resolvedIdCol = resolveIdColumn(csvData, idColumn || 'respid');
       if (!csvData[0] || !(resolvedIdCol in csvData[0])) {
         const autoId = detectIdColumn(csvData);
@@ -841,7 +824,6 @@ ${responsesPayload}`
       try { ops = parseJsonMaybe(content); } catch { throw new Error('The model did not return valid JSON for structured edits.'); }
       if (!Array.isArray(ops)) throw new Error('Edits must be a JSON array.');
 
-      // apply
       applyEditPatches(qcol, ops);
       setSuccess(`Applied ${ops.length} edit operation(s) to ${qcol}.`);
     } catch (err) {
@@ -923,7 +905,6 @@ ${responsesPayload}`
                   {fileName || 'No file selected'}
                 </p>
               </div>
-              {/* FIX: proper handler + accept types */}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1091,27 +1072,54 @@ ${responsesPayload}`
             <div className="card">
               <h2>Themes</h2>
 
-              {/* Edit Prompt inside the Themes card (visible only when results exist) */}
+              {/* Collapsible Edit Prompt inside the Themes card */}
               <div className="form-group" style={{ marginTop: 8, marginBottom: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <label>Edit Prompt (applies to selected themes below)</label>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={resetEditPrompt}
-                    style={{ padding: '0.4rem 0.75rem', fontSize: '0.9rem' }}
-                    title="Reset to the default edit prompt"
-                  >
-                    Reset Edit Prompt
-                  </button>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <label id="edit-prompt-label">Edit Prompt (applies to selected themes below)</label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setShowEditPromptBox(s => !s)}
+                      aria-expanded={showEditPromptBox}
+                      aria-controls="edit-prompt-panel"
+                    >
+                      {showEditPromptBox ? 'Hide Edit Prompt' : 'Show Edit Prompt'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={resetEditPrompt}
+                      title="Reset to the default edit prompt"
+                    >
+                      Reset Edit Prompt
+                    </button>
+                  </div>
                 </div>
-                <textarea
-                  value={editPrompt}
-                  onChange={(e) => setEditPrompt(e.target.value)}
-                  rows={5}
-                  style={{ fontFamily: 'monospace', fontSize: '0.875rem', width: '100%' }}
-                  placeholder="Describe edits, e.g.: merge 0 & 1 into 'Affordability & Cost'; split 2 into 'Availability' and 'Quality' with proper ID reassignment."
-                />
+
+                {/* Collapsible panel */}
+                {showEditPromptBox && (
+                  <div
+                    id="edit-prompt-panel"
+                    role="region"
+                    aria-labelledby="edit-prompt-label"
+                    style={{
+                      marginTop: 8,
+                      padding: '10px',
+                      border: '1px solid rgba(0,0,0,0.08)',
+                      borderRadius: 8,
+                      background: '#f9fafb'
+                    }}
+                  >
+                    <textarea
+                      value={editPrompt}
+                      onChange={(e) => setEditPrompt(e.target.value)}
+                      rows={5}
+                      style={{ fontFamily: 'monospace', fontSize: '0.875rem', width: '100%' }}
+                      placeholder="Describe edits, e.g.: merge 0 & 1 into 'Affordability & Cost'; split 2 into 'Availability' and 'Quality' with proper ID reassignment."
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="results">
@@ -1131,7 +1139,7 @@ ${responsesPayload}`
                     });
                   }
                   const denom = universe.size > 0 ? universe.size : unionAssigned.size;
-                  const safeDenom = denom > 0 ? denom : 1; // avoid divide-by-zero; shows 0/1 → 0%
+                  const safeDenom = denom > 0 ? denom : 1; // avoid divide-by-zero
 
                   return (
                     <div key={qcol} className="theme-item" style={{ borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: 12, marginBottom: 16 }}>

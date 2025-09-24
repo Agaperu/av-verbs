@@ -1,4 +1,4 @@
-# American Viewpoint Tools – Survey Analysis Web App
+# Survey Analysis Web App
 
 This React-based web application provides AI-assisted tools for analyzing survey data. It supports two main workflows:
 

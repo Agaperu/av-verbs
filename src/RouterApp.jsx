@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import KnowledgeBotApp from "./App";
 import ToplinesApp from "./ToplinesApp";
 import Login from "./Login";
+import Chatbot from "./Chatbot";
 
 const AUTH_KEY = "av_authed_v1";
 
@@ -85,6 +86,7 @@ export default function RouterApp() {
           <Route path="/" element={<Navigate to="/bot" replace />} />
           <Route path="/bot" element={<AppsContainer />} />
           <Route path="/toplines" element={<AppsContainer />} />
+          <Route path="/chatbot" element={<Chatbot />} />
           <Route path="*" element={<AppsContainer />} />
         </Routes>
       </Suspense>

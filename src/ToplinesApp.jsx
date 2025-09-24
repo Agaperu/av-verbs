@@ -382,6 +382,7 @@ function ConfigTabs() {
     <div className="config-tabs" style={{ display: 'flex', gap: 8, marginBottom: '1rem' }}>
       <NavLink to="/bot" style={tabStyle}>Verbatims</NavLink>
       <NavLink to="/toplines" style={tabStyle}>Memos</NavLink>
+      <NavLink to="/chatbot" style={tabStyle}>Chatbot</NavLink>
     </div>
   );
 }

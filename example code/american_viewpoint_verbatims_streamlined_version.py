@@ -31,7 +31,6 @@ from openai import OpenAI
 if not os.getenv("OPENROUTER_API_KEY"):
     os.environ["OPENROUTER_API_KEY"] = getpass("Enter your OPENROUTER_API_KEY: ")
 
-# OpenAI Key: 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
 
 # Optional but recommended: set a referer and title to appear in your OpenRouter dashboard
 OPENROUTER_REF = os.getenv("OPENROUTER_REF", "https://colab.research.google.com/")

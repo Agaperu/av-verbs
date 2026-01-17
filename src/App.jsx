@@ -6,20 +6,24 @@ import axios from 'axios';
 import { Upload, Download, FileText, AlertCircle, CheckCircle } from 'lucide-react';
 import logoUrl from './assets/av-logo3.png';
 import logoGif from './assets/av-logo-gif-no_background.gif';
+import { API_CHAT_URL } from './apiBase';
 
 /* ===================== Python-style constants & helpers ===================== */
 
 // Match Python’s big cap (be mindful of your model/rate limits)
-const MAX_INPUT_CHARS = 120000;
+const MAX_INPUT_CHARS = 12000;
+const MAX_RECORDS_PER_CHUNK = 60;
+const DEFAULT_MAX_COMPLETION_TOKENS = 600;
+const FALLBACK_MAX_COMPLETION_TOKENS = 1200;
 
 // Simple backoff for 429 / 5xx (honors Retry-After)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-async function postChatWithBackoff(url, body, headers, { maxRetries = 6, initialDelayMs = 1500, jitterMs = 400 } = {}) {
+async function postChatWithBackoff(url, body, { maxRetries = 6, initialDelayMs = 1500, jitterMs = 400 } = {}) {
   let attempt = 0, delay = initialDelayMs;
   // eslint-disable-next-line no-constant-condition
   while (true) {
     try {
-      return await axios.post(url, body, { headers });
+      return await axios.post(url, body);
     } catch (err) {
       const status = err?.response?.status;
       if (status === 429 || status >= 500) {
@@ -71,11 +75,12 @@ const detectIdColumn = (rows) => {
 };
 
 // === “Meaningful” text gate (w/ common placeholders) ===
+const MIN_MEANINGFUL_CHARS = 1;
 const PLACEHOLDERS = new Set(['', ' ', 'na', 'n a', 'n/a', 'none', 'no response', 'no comment', 'nil', '.', '-', '--']);
 const normalizePlaceholder = (s) =>
   (s || '').toString().replace(/[^0-9A-Za-z]+/g, ' ').trim().toLowerCase();
 
-const isMeaningful = (text, minChars = 3) => {
+const isMeaningful = (text, minChars = MIN_MEANINGFUL_CHARS) => {
   const s = (text || '').toString().trim();
   if (s.length < minChars) return false;
   const norm = normalizePlaceholder(s);
@@ -106,6 +111,218 @@ function buildPayloadForColumn(rows, idCol, colName, maxChars = MAX_INPUT_CHARS,
     total += add;
   }
   return lines.join('\n');
+}
+
+function normalizeParticipantIds(themes, rows, idCol) {
+  if (!Array.isArray(themes)) return themes;
+
+  // Map "1" -> rows[0][idCol], "2" -> rows[1][idCol], etc.
+  const rowToRid = new Map();
+  for (let i = 0; i < rows.length; i++) {
+    const rid = String(rows[i]?.[idCol] ?? (i + 1));
+    rowToRid.set(String(i + 1), rid); // 1-based
+  }
+
+  const cleanToken = (x) => {
+    if (x == null) return "";
+    const s = String(x).trim();
+    // Accept "23", or "row 23", or "#23"
+    const m = s.match(/\d+/);
+    return m ? m[0] : s;
+  };
+
+  return themes.map((t) => {
+    const ids = Array.isArray(t?.ParticipantID)
+      ? t.ParticipantID
+      : (t?.ParticipantID != null ? [t.ParticipantID] : []);
+
+    const mapped = ids
+      .map(cleanToken)
+      .map((tok) => rowToRid.get(tok) ?? tok) // if it's a row number, map it
+      .filter(Boolean)
+      .map(String);
+
+    return {
+      ...t,
+      ParticipantID: Array.from(new Set(mapped)),
+    };
+  });
+}
+
+
+// === NEW: chunked payload builder to ensure no responses are skipped ===
+function buildPayloadChunk(
+  rows,
+  idCol,
+  colName,
+  startIndex = 0,
+  maxChars = MAX_INPUT_CHARS,
+  skipBlanks = true,
+  maxRecords = MAX_RECORDS_PER_CHUNK
+) {
+  const lines = [];
+  const includedIds = [];
+  let total = 0;
+  let i = startIndex;
+  let recordCount = 0;
+
+  for (; i < rows.length; i++) {
+    const rid = String(rows[i]?.[idCol] ?? (i + 1));
+    const raw = rows[i]?.[colName];
+    const txt = String(raw ?? '').replace(/\n/g, ' ').trim();
+
+    // honor toggle
+    if (skipBlanks) {
+      if (!isMeaningful(txt)) continue;
+    } else {
+      if (!txt) continue;
+    }
+
+    const line = `record=${rid} | response=${txt}`;
+    const add = line.length + 1;
+
+    // If we can't fit this line and we already have something in the chunk, stop here.
+    // We'll continue from this same row in the next chunk.
+    if (total + add > maxChars) {
+      if (lines.length > 0) break;
+      // Single line too large: hard-trim so we can progress.
+      const trimmed = line.slice(0, Math.max(2000, maxChars - 200));
+      lines.push(trimmed);
+      includedIds.push(rid);
+      i++;
+      break;
+    }
+
+    lines.push(line);
+    includedIds.push(rid);
+    total += add;
+    recordCount++;
+    if (recordCount >= maxRecords) {
+      i++;
+      break;
+    }
+  }
+
+  return {
+    payload: lines.join('\\n'),
+    nextIndex: i,
+    includedIds,
+  };
+}
+
+function estimateChunkCount(
+  rows,
+  idCol,
+  colName,
+  maxChars = MAX_INPUT_CHARS,
+  skipBlanks = true,
+  maxRecords = MAX_RECORDS_PER_CHUNK
+) {
+  if (!Array.isArray(rows) || rows.length === 0) return 0;
+  let count = 0;
+  let i = 0;
+
+  while (i < rows.length) {
+    let total = 0;
+    let included = 0;
+    let recordCount = 0;
+
+    for (; i < rows.length; i++) {
+      const rid = String(rows[i]?.[idCol] ?? (i + 1));
+      const raw = rows[i]?.[colName];
+      const txt = String(raw ?? '').replace(/\n/g, ' ').trim();
+
+      if (skipBlanks) {
+        if (!isMeaningful(txt)) continue;
+      } else {
+        if (!txt) continue;
+      }
+
+      const line = `record=${rid} | response=${txt}`;
+      const add = line.length + 1;
+
+      if (total + add > maxChars) {
+        if (included > 0) break;
+        i++;
+        included++;
+        break;
+      }
+
+      total += add;
+      included++;
+      recordCount++;
+      if (recordCount >= maxRecords) {
+        i++;
+        break;
+      }
+    }
+
+    if (included > 0) count++;
+  }
+
+  return count;
+}
+
+// === NEW: merge themes across chunks (simple label-based merge) ===
+function mergeChunkThemes(chunks) {
+  const merged = new Map(); // key: normalized label -> theme
+  const normLabel = (s) => String(s || '').trim().toLowerCase();
+
+  for (const part of chunks) {
+    if (!Array.isArray(part)) continue;
+    for (const t of part) {
+      const key = normLabel(t?.ThemeLabel || 'other');
+      const prev = merged.get(key);
+
+      const ids = Array.isArray(t?.ParticipantID) ? t.ParticipantID.map(String) : [];
+      const kws = Array.isArray(t?.RepresentativeKeywords) ? t.RepresentativeKeywords.map(String) : [];
+
+      if (!prev) {
+        merged.set(key, {
+          ThemeLabel: t?.ThemeLabel || 'Other',
+          Definition: t?.Definition || '',
+          RepresentativeKeywords: Array.from(new Set(kws)),
+          ParticipantID: Array.from(new Set(ids)),
+        });
+      } else {
+        prev.ParticipantID = Array.from(new Set([...(prev.ParticipantID || []), ...ids]));
+        prev.RepresentativeKeywords = Array.from(new Set([...(prev.RepresentativeKeywords || []), ...kws]));
+        if (!prev.Definition && t?.Definition) prev.Definition = t.Definition;
+      }
+    }
+  }
+
+  return Array.from(merged.values());
+}
+
+// === NEW: ensure 100% assignment coverage for eligible responses ===
+function ensureAllIdsAssigned(themes, universeIdsSet) {
+  const assigned = new Set();
+  const out = Array.isArray(themes) ? [...themes] : [];
+
+  for (const t of out) {
+    const ids = Array.isArray(t?.ParticipantID) ? t.ParticipantID : (t?.ParticipantID != null ? [t.ParticipantID] : []);
+    ids.forEach((id) => assigned.add(String(id)));
+  }
+
+  const missing = [];
+  if (universeIdsSet && typeof universeIdsSet.forEach === 'function') {
+    universeIdsSet.forEach((id) => {
+      const sid = String(id);
+      if (!assigned.has(sid)) missing.push(sid);
+    });
+  }
+
+  if (missing.length > 0) {
+    out.push({
+      ThemeLabel: 'Uncategorized / Needs Review',
+      Definition: 'Responses the model did not assign to a theme in this pass.',
+      RepresentativeKeywords: [],
+      ParticipantID: missing,
+    });
+  }
+
+  return out;
 }
 
 // Python-style lenient JSON parser
@@ -145,6 +362,49 @@ function parseJsonMaybe(text) {
   }
   // Let caller handle parse failure
   throw new Error('JSON parse failed');
+}
+
+function extractChatContent(resp) {
+  const data = resp?.data;
+  if (data == null) throw new Error('Empty response from OpenAI proxy.');
+  if (typeof data === 'string') {
+    const sample = data.trim().slice(0, 200);
+    if (sample.startsWith('<!DOCTYPE html') || sample.includes('<html')) {
+      throw new Error('Unexpected HTML response from OpenAI proxy. Run with netlify dev, add a Vite proxy, or set VITE_API_BASE_URL.');
+    }
+    throw new Error('Unexpected non-JSON response from OpenAI proxy.');
+  }
+  if (data.error?.message) throw new Error(`OpenAI error: ${data.error.message}`);
+  if (!Array.isArray(data.choices)) throw new Error('Unexpected API response (missing choices).');
+  const choice = data.choices?.[0];
+  const content = choice?.message?.content ?? '';
+  if (!String(content).trim()) {
+    const finish = choice?.finish_reason ? ` Finish reason: ${choice.finish_reason}.` : '';
+    throw new Error(`OpenAI returned empty content.${finish}`);
+  }
+  return content;
+}
+
+async function fetchChatContent(messages, model, maxTokens) {
+  const body = {
+    model,
+    messages,
+    max_completion_tokens: maxTokens,
+    max_tokens: maxTokens,
+  };
+  const resp = await postChatWithBackoff(API_CHAT_URL, body);
+  return extractChatContent(resp);
+}
+
+async function fetchChatContentWithRetry(messages, model) {
+  try {
+    return await fetchChatContent(messages, model, DEFAULT_MAX_COMPLETION_TOKENS);
+  } catch (err) {
+    if (String(err?.message || '').includes('empty content')) {
+      return await fetchChatContent(messages, model, FALLBACK_MAX_COMPLETION_TOKENS);
+    }
+    throw err;
+  }
 }
 
 /* ===== NEW: compute question-level respondent universe (for % coverage) ===== */
@@ -203,13 +463,54 @@ function App() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isDragging, setIsDragging] = useState(false);
-  const [modelName, setModelName] = useState('gpt-5');
+  const [modelName, setModelName] = useState('gpt-5.2');
   const [showPreview, setShowPreview] = useState(false);
   const [outputFormat] = useState('long'); // kept for compatibility
   const [questionId, setQuestionId] = useState(''); // optional filter (e.g., q24)
   const [idColumn, setIdColumn] = useState('respid'); // default like Python
   const [skipBlankCells, setSkipBlankCells] = useState(true); // remove blanks/placeholders
+  const [estimatedCalls, setEstimatedCalls] = useState(null);
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    if (!csvData || csvData.length === 0) {
+      setEstimatedCalls(null);
+      return;
+    }
+
+    const questionColumns = detectQuestionColumns(csvData);
+    if (questionColumns.length === 0) {
+      setEstimatedCalls(0);
+      return;
+    }
+
+    let resolvedIdCol = resolveIdColumn(csvData, idColumn || 'respid');
+    if (!csvData[0] || !(resolvedIdCol in csvData[0])) {
+      const autoId = detectIdColumn(csvData);
+      if (autoId && autoId in csvData[0]) resolvedIdCol = autoId;
+      else {
+        setEstimatedCalls(null);
+        return;
+      }
+    }
+
+    const qFilter = (questionId || '').trim().toLowerCase();
+    let columnsToProcess = questionColumns;
+    if (qFilter) {
+      columnsToProcess = questionColumns.filter((c) => c.toLowerCase().startsWith(qFilter));
+    }
+
+    if (columnsToProcess.length === 0) {
+      setEstimatedCalls(0);
+      return;
+    }
+
+    let total = 0;
+    for (const col of columnsToProcess) {
+      total += estimateChunkCount(csvData, resolvedIdCol, col, MAX_INPUT_CHARS, skipBlankCells);
+    }
+    setEstimatedCalls(total);
+  }, [csvData, questionId, idColumn, skipBlankCells]);
 
   const defaultPrompt = `Your role: You are a senior survey research analyst.
 Your task: Read the list of open-ended responses to the survey question, <INSERT SURVEY QUESTION(S) HERE>, in the attached csv and identify the key themes. It is CRUCIAL that every ParticipantID goes into AT LEAST one theme category for each question. You may include categories for 'Other', 'Don't Know', and 'Refused' if needed.
@@ -219,7 +520,8 @@ Instructions:
 - ThemeLabel (3–5 neutral words) 
 - Definition (short, factual) 
 - RepresentativeKeywords (5–10 indicative words/phrases) 
-- ParticipantID (row numbers that correspond to the theme)
+- ParticipantID must be the EXACT token after "record=" on each line (e.g., record=AB123 → "AB123").
+- Do NOT use row numbers.
 3) Output ONLY JSON in this format: 
 [ 
 { 
@@ -383,7 +685,7 @@ HARD RULES:
 
   /* ===================== One-shot analysis (Python-like) ===================== */
 
-  async function llmThemeExtract({ columnName, model, idCol, headers }) {
+  async function llmThemeExtract({ columnName, model, idCol }) {
     // FIX: use state variable skipBlankCells (not "skipBlanks")
     const payload = buildPayloadForColumn(csvData, idCol, columnName, MAX_INPUT_CHARS, skipBlankCells);
     if (!payload || !payload.trim()) {
@@ -403,20 +705,66 @@ HARD RULES:
     ];
 
     try {
-      const body = { model, messages };
-      const resp = await postChatWithBackoff('https://api.openai.com/v1/chat/completions', body, headers);
-      const content = resp.data?.choices?.[0]?.message?.content ?? '';
+      const content = await fetchChatContentWithRetry(messages, model);
       return { ok: true, content };
     } catch (err) {
       return { ok: false, error: err };
     }
   }
 
-  const analyzeData = async () => {
-    if (!apiKey.trim()) {
-      setError('Please enter your OpenAI API key.');
-      return;
+  // === NEW: chunked analysis to ensure every eligible response is sent to the model ===
+  async function llmThemeExtractAllChunks({ columnName, model, idCol }) {
+    let startIndex = 0;
+    const parsedChunks = [];
+    const rawChunks = [];
+
+    while (startIndex < csvData.length) {
+      const { payload, nextIndex } = buildPayloadChunk(csvData, idCol, columnName, startIndex, MAX_INPUT_CHARS, skipBlankCells);
+      startIndex = nextIndex;
+
+      // If this chunk had zero includable responses, continue
+      if (!payload || !payload.trim()) continue;
+
+      const messages = [
+        { role: 'system', content: 'You are a precise, compliance-focused data analyst. Output strictly valid JSON with no commentary.' },
+        {
+          role: 'user',
+          content:
+            `Analyze the following open-ended responses for column '${columnName}'.\n\n` +
+            `${analysisPrompt}\n\n` +
+            `Use the 'record' value as ParticipantID.\n\n` +
+            `RESPONSES (one per line):\n${payload}`
+        }
+      ];
+
+      try {
+        const content = await fetchChatContentWithRetry(messages, model);
+        rawChunks.push(content);
+
+        try {
+          const parsed = parseJsonMaybe(content);
+          parsedChunks.push(parsed);
+        } catch (_) {
+          // preserve raw chunk if parse fails
+          parsedChunks.push(null);
+        }
+      } catch (err) {
+        return { ok: false, error: err };
+      }
+
+      // brief spacing reduces collision with rate limits
+      await sleep(600);
     }
+
+    return { ok: true, parsedChunks, rawChunks };
+  }
+
+
+  const analyzeData = async () => {
+    // if (false) {
+    //   setError('Please enter your OpenAI API key.');
+    //   return;
+    // }
     if (!csvData || csvData.length === 0) {
       setError('Please upload a CSV file first.');
       return;
@@ -463,15 +811,23 @@ HARD RULES:
         }
       }
 
+      const callEstimate = columnsToProcess.reduce(
+        (sum, col) => sum + estimateChunkCount(csvData, resolvedIdCol, col, MAX_INPUT_CHARS, skipBlankCells),
+        0
+      );
+      setEstimatedCalls(callEstimate);
+      if (callEstimate === 0) {
+        setIsLoading(false);
+        setError('No eligible responses found (all responses are blank or placeholders).');
+        return;
+      }
+
       const allResults = {};
-      const headers = {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      };
+      
       const model = modelName;
 
       for (const col of columnsToProcess) {
-        const r = await llmThemeExtract({ columnName: col, model, idCol: resolvedIdCol, headers });
+        const r = await llmThemeExtractAllChunks({ columnName: col, model, idCol: resolvedIdCol });
 
         if (!r.ok) {
           const status = r.error?.response?.status;
@@ -481,11 +837,20 @@ HARD RULES:
           continue;
         }
 
-        try {
-          const parsed = parseJsonMaybe(r.content);
-          allResults[col] = parsed;
-        } catch (_) {
-          allResults[col] = { _raw: r.content };
+        // Merge themes across chunks; keep raw if parsing fails.
+        const mergeable = Array.isArray(r.parsedChunks) ? r.parsedChunks.filter(Array.isArray) : [];
+        if (mergeable.length > 0) {
+          let mergedThemes = mergeChunkThemes(mergeable);
+
+          // NEW: if the model used row numbers, convert them to record IDs
+          mergedThemes = normalizeParticipantIds(mergedThemes, csvData, resolvedIdCol);
+          
+          const universe = computeQuestionUniverse(csvData, resolvedIdCol, col, skipBlankCells);
+          allResults[col] = ensureAllIdsAssigned(mergedThemes, universe);
+          
+        } else {
+          // Fall back to raw chunk text for debugging.
+          allResults[col] = { _rawChunks: r.rawChunks };
         }
 
         await sleep(1200);
@@ -800,14 +1165,12 @@ ${responsesPayload}`
       }
     ];
 
-    const body = { model, messages };
-    const resp = await postChatWithBackoff('https://api.openai.com/v1/chat/completions', body, headers);
-    const content = resp.data?.choices?.[0]?.message?.content ?? '[]';
+    const content = await fetchChatContentWithRetry(messages, model);
     return content;
   }
 
   const onEditSelectedForQuestion = async (qcol) => {
-    if (!apiKey.trim()) { setError('Please enter your OpenAI API key.'); return; }
+    if (false) { setError('Please enter your OpenAI API key.'); return; }
     if (!csvData || csvData.length === 0) { setError('Please upload a CSV file first.'); return; }
 
     const themesArr = Array.isArray(results?.[qcol]) ? results[qcol] : null;
@@ -887,10 +1250,10 @@ ${responsesPayload}`
             <ConfigTabs />
 
             <div className="form-group">
-              <label htmlFor="apiKey">OpenAI API Key</label>
+              <label htmlFor="bot-apiKey">OpenAI API Key</label>
               <input
                 type="password"
-                id="apiKey"
+                id="bot-apiKey"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder="Enter your OpenAI API key"
@@ -988,23 +1351,24 @@ ${responsesPayload}`
             </h2>
 
             <div className="form-group">
-              <label htmlFor="modelSelect">Model</label>
+              <label htmlFor="bot-modelSelect">Model</label>
               <select
-                id="modelSelect"
+                id="bot-modelSelect"
                 value={modelName}
                 onChange={(e) => setModelName(e.target.value)}
                 style={{ width: 260, padding: '6px 8px', borderRadius: 6 }}
               >
-                <option value="gpt-5">GPT-5 (Best quality)</option>
-                <option value="gpt-5-mini">GPT-5 mini (Faster)</option>
+                <option value="gpt-5.2">GPT-5.2</option>
+                <option value="gpt-5">GPT-5</option>
+                <option value="gpt-5-mini">GPT-5 mini</option>
               </select>
             </div>
 
             <div className="form-group">
-              <label htmlFor="idColumn">ID Column Name</label>
+              <label htmlFor="bot-idColumn">ID Column Name</label>
               <input
                 type="text"
-                id="idColumn"
+                id="bot-idColumn"
                 value={idColumn}
                 onChange={(e) => setIdColumn(e.target.value)}
                 placeholder="e.g., respid, record, participant_id"
@@ -1013,11 +1377,11 @@ ${responsesPayload}`
             </div>
 
             <div className="form-group qfilter">
-              <label htmlFor="questionId">Question Filter (optional)</label>
+              <label htmlFor="bot-questionId">Question Filter (optional)</label>
               <div className="qfilter-row">
                 <input
                   type="text"
-                  id="questionId"
+                  id="bot-questionId"
                   value={questionId}
                   onChange={(e) => setQuestionId(e.target.value)}
                   placeholder="e.g., q24"
@@ -1062,6 +1426,11 @@ ${responsesPayload}`
                 <Download size={16} /> Export CSVs
               </button>
             </div>
+            {estimatedCalls != null && (
+              <div style={{ fontSize: '0.8rem', color: '#718096', marginTop: 8 }}>
+                Estimated API calls: {estimatedCalls}
+              </div>
+            )}
           </div>
 
           {error && (

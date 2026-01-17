@@ -10,6 +10,7 @@ import {
 
 import logoUrl from "./assets/av-logo3.png";
 import logoGif from "./assets/av-logo-gif-no_background.gif";
+import { API_CHAT_URL } from "./apiBase";
 
 /* ===================== Shared helpers & constants (matches your App.jsx style) ===================== */
 
@@ -25,7 +26,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function postChatWithBackoff(
   url,
   body,
-  headers,
   { maxRetries = 4, initialDelayMs = 1500, jitterMs = 400 } = {}
 ) {
   let attempt = 0, delay = initialDelayMs;
@@ -574,14 +574,14 @@ export default function ToplinesApp() {
       // Optional: call OpenAI for summaries (per question) if apiKey present
       const newSummaries = {};
       if (apiKey.trim()) {
-        const headers = { Authorization: `Bearer ${apiKey.trim()}`, "Content-Type": "application/json" };
         for (const q of questionCols) {
           const prompt = buildSummaryPrompt(q, newToplines[q], styleChoice);
           const messages = [{ role: "user", content: prompt }];
 
           try {
             const body = { model: modelName, messages, temperature: 0.3 };
-            const resp = await postChatWithBackoff("https://api.openai.com/v1/chat/completions", body, headers);
+            const resp = await postChatWithBackoff(API_CHAT_URL, body);
+
             newSummaries[q] = resp.data?.choices?.[0]?.message?.content?.trim() || "[Empty response]";
           } catch (err) {
             console.warn("AI summary failed:", err?.message || err);
@@ -657,25 +657,26 @@ export default function ToplinesApp() {
             <ConfigTabs />
 
             <div className="form-group">
-              <label htmlFor="apiKey">OpenAI API Key</label>
+              <label htmlFor="toplines-apiKey">OpenAI API Key</label>
               <input
                 type="password"
-                id="apiKey"
+                id="toplines-apiKey"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder="Enter your OpenAI API key (optional for summaries)"
               />
             </div>
             <div className="form-group">
-              <label htmlFor="modelSelect">Model</label>
+              <label htmlFor="toplines-modelSelect">Model</label>
               <select
-                id="modelSelect"
+                id="toplines-modelSelect"
                 value={modelName}
                 onChange={(e) => setModelName(e.target.value)}
                 style={{ width: 260, padding: "6px 8px", borderRadius: 6 }}
               >
-                <option value="gpt-4o-mini">gpt-4o-mini (fast, economical)</option>
-                <option value="gpt-4o">gpt-4o (higher quality)</option>
+                <option value="gpt-5.2">GPT-5.2</option>
+                <option value="gpt-4o-mini">gpt-4o-mini</option>
+                <option value="gpt-4o">gpt-4o</option>
               </select>
             </div>
           </div>

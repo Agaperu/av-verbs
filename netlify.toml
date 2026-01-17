@@ -1,8 +1,17 @@
 # netlify.toml
+
 [build]
   command = "npm run build"
   publish = "dist"
+  functions = "netlify/functions"
 
+# API proxy (must come BEFORE the SPA redirect)
+[[redirects]]
+  from = "/api/openai-chat"
+  to = "/.netlify/functions/openai-chat"
+  status = 200
+
+# React Router fallback
 [[redirects]]
   from = "/*"
   to = "/index.html"

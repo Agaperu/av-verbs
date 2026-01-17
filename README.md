@@ -60,6 +60,18 @@ This React-based web application provides AI-assisted tools for analyzing survey
       - Export as tidy CSVs with topline percentages.
 - Log out anytime using the floating logout button in the top-right.
 
+## Render API Proxy
+
+To avoid Netlify function timeouts, run the OpenAI proxy on Render and point the frontend to it.
+
+1) Deploy the API service using `render.yaml` (or create a new Render Web Service).
+2) Set `OPENAI_API_KEY` in Render.
+3) Set `VITE_API_BASE_URL` for the frontend build (Netlify env var or local `.env`) to your Render URL, e.g. `https://your-service.onrender.com`.
+
+For local testing:
+- Run the API: `npm run api`
+- Run the frontend: `npm run dev`
+
 ## Notes
 
 - API keys are stored in `localStorage` and cleared on reset

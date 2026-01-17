@@ -6,6 +6,7 @@ import axios from "axios";
 import { Upload, Send, FileText, AlertCircle, CheckCircle, X } from "lucide-react";
 import logoUrl from "./assets/av-logo3.png";
 import logoGif from "./assets/av-logo-gif-no_background.gif";
+import { API_CHAT_URL } from "./apiBase";
 
 /* ===================== Shared constants & helpers (matches your apps) ===================== */
 
@@ -15,14 +16,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function postChatWithBackoff(
   url,
   body,
-  headers,
   { maxRetries = 6, initialDelayMs = 1500, jitterMs = 400 } = {}
 ) {
   let attempt = 0, delay = initialDelayMs;
   // eslint-disable-next-line no-constant-condition
   while (true) {
     try {
-      return await axios.post(url, body, { headers });
+      return await axios.post(url, body);
     } catch (err) {
       const status = err?.response?.status;
       if (status === 429 || status >= 500) {
@@ -141,7 +141,7 @@ export default function Chatbot() {
     } catch {}
   }, [apiKey]);
 
-  const [modelName, setModelName] = useState("gpt-5"); // good default
+  const [modelName, setModelName] = useState("gpt-5.2"); // good default
   const [question, setQuestion] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -208,7 +208,7 @@ export default function Chatbot() {
   /* ---------- Ask model ---------- */
 
   async function ask() {
-    if (!apiKey.trim()) { setError("Please enter your OpenAI API key."); return; }
+    // if (!apiKey.trim()) { setError("Please enter your OpenAI API key."); return; }
     const q = question.trim();
     if (!q) { setError("Type a question to ask the model."); return; }
 
@@ -258,13 +258,12 @@ ${fileBlocks.join("\n\n")}`;
     ];
 
     try {
-      const headers = { Authorization: `Bearer ${apiKey.trim()}`, "Content-Type": "application/json" };
       const body = { 
         model: modelName, 
         messages: chatMessages, 
-        ... (modelName !== "gpt-5" ? {temperature: 0.2 } : {})
+        ... (modelName !== "gpt-5.2" ? {temperature: 0.2 } : {})
       };
-      const resp = await postChatWithBackoff("https://api.openai.com/v1/chat/completions", body, headers);
+      const resp = await postChatWithBackoff(API_CHAT_URL, body);
       const content = resp?.data?.choices?.[0]?.message?.content ?? "(No content returned)";
 
       setMessages((prev) => [...prev, { role: "user", content: q }, { role: "assistant", content }]);
@@ -309,10 +308,10 @@ ${fileBlocks.join("\n\n")}`;
             <ConfigTabs />
 
             <div className="form-group">
-              <label htmlFor="apiKey">OpenAI API Key</label>
+              <label htmlFor="chatbot-apiKey">OpenAI API Key</label>
               <input
                 type="password"
-                id="apiKey"
+                id="chatbot-apiKey"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder="sk-..."
@@ -320,15 +319,16 @@ ${fileBlocks.join("\n\n")}`;
             </div>
 
             <div className="form-group">
-              <label htmlFor="modelName">Model</label>
+              <label htmlFor="chatbot-modelName">Model</label>
               <select
-                id="modelName"
+                id="chatbot-modelName"
                 value={modelName}
                 onChange={(e) => setModelName(e.target.value)}
                 style={{ width: "100%", padding: "0.5rem", borderRadius: 8, border: "2px solid #e2e8f0" }}
               >
-                <option value="gpt-5">GPT-5 (Best quality)</option>
-                <option value="gpt-4o-mini">GPT-4o-mini (Fast & cheap)</option>
+                <option value="gpt-5.2">GPT-5.2</option>
+                <option value="gpt-5">GPT-5 </option>
+                <option value="gpt-4o-mini">GPT-4o-mini</option>
                 <option value="gpt-4o">GPT-4o</option>
               </select>
             </div>

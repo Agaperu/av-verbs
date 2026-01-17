@@ -319,7 +319,7 @@
     justify-content: flex-start;
     flex-wrap: wrap;
   }
-  .main .form-group.qfilter input#questionId {
+  .main .form-group.qfilter input#bot-questionId {
     width: 240px;           /* keep the text input compact */
     margin: 0;
   }
@@ -347,7 +347,7 @@
     flex-wrap: wrap;
   }
   
-  .main .form-group.qfilter input#questionId {
+  .main .form-group.qfilter input#bot-questionId {
     width: 240px;        /* adjust as you like */
     flex: 0 0 20px;     /* prevents flex from stretching it */
     margin: 0;
@@ -356,7 +356,7 @@
   
   /* optional: responsive width */
   @media (max-width: 480px) {
-    .main .form-group.qfilter input#questionId {
+    .main .form-group.qfilter input#bot-questionId {
       width: 100%;
       flex: 1 1 auto;
     }
